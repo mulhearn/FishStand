@@ -21,9 +21,6 @@ import android.view.Surface;
 import android.widget.Toast;
 import android.os.IBinder;
 
-import com.google.android.gms.drive.DriveFile;
-import com.google.android.gms.drive.DriveFolder;
-
 /**
  * Created by mulhearn on 4/28/18.
  */
@@ -40,6 +37,7 @@ public class DaqService extends Service implements Runnable {
     }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.i(TAG, "onStartCommand called");
 
         if (intent.getAction().equals(ACTION.STARTFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Start Foreground Intent ");
@@ -116,7 +114,6 @@ public class DaqService extends Service implements Runnable {
     @Override
     public void onCreate() {
         super.onCreate();
-        drive = new GoogleDrive();
     }
 
     @Override
