@@ -135,6 +135,11 @@ public class MainActivity extends AppCompatActivity {
 
     public void buttonClicked(View v) {
         Log.i(TAG, "button pushed...");
+        if (! App.getDrive().isInitialized()){
+            Log.i(TAG, "Google Drive not initialized... refusing to start...");
+            return;
+        }
+
         Intent service = new Intent(MainActivity.this, DaqService.class);
         if (DaqService.state == DaqService.STATE.READY) {
             Log.i(TAG, "button starting foreground action...");

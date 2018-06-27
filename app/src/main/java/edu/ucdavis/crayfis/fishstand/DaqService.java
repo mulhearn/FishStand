@@ -21,6 +21,18 @@ import android.view.Surface;
 import android.widget.Toast;
 import android.os.IBinder;
 
+import com.google.android.gms.drive.DriveContents;
+import com.google.android.gms.drive.DriveFile;
+import com.google.android.gms.drive.DriveFolder;
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * Created by mulhearn on 4/28/18.
  */
@@ -38,7 +50,7 @@ public class DaqService extends Service implements Runnable {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand called");
-
+        
         if (intent.getAction().equals(ACTION.STARTFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Start Foreground Intent ");
             if (state!=STATE.READY){
@@ -108,8 +120,12 @@ public class DaqService extends Service implements Runnable {
     private int requests, processing, events;
     private long run_start, run_end;
 
+    private String job_tag;
+    private int num;
+    private Boolean repeat;
+
     public static STATE state = STATE.READY;
-    public static final String TAG = "fishstand-cosmics";
+    public static final String TAG = "DaqService";
 
     @Override
     public void onCreate() {
@@ -146,7 +162,7 @@ public class DaqService extends Service implements Runnable {
         while(state == STATE.RUNNING){
             Next();
             SystemClock.sleep(200);
-            if (requests >= 10){
+            if (requests >= num){
                 state = STATE.STOPPING;
             }
         }
@@ -158,6 +174,12 @@ public class DaqService extends Service implements Runnable {
         SharedPreferences.Editor edit = App.getEdit();
         edit.putInt("run_num", run_num);
         edit.commit();
+
+        if (repeat){
+            new Thread(this).start();
+            return;
+        }
+
         state = STATE.READY;
         App.getMessage().updateState();
         stopForeground(true);
@@ -234,6 +256,53 @@ public class DaqService extends Service implements Runnable {
         requests = 0;
         processing = 0;
         events = 0;
+        job_tag = "uninitialized";
+        num = 0;
+        repeat = false;
+        String analysis_name = "";
+        try {
+            DriveFile config = App.getDrive().getConfigFile();
+            DriveFile log = App.getDrive().createLogFile();
+
+            if (config == null){
+                throw new Exception("null config file");
+            }
+            Task<DriveContents> open_file =
+                    App.getDrive().getResourceClient().openFile(config, DriveFile.MODE_READ_ONLY);
+            DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(contents.getInputStream()));
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                Log.i(TAG, "config line:  " + line);
+                line = line.split("#")[0]; // remove comments
+                String[] tokens = line.split("\\s+");  // tokenize by whitespace
+                if ((tokens.length > 1) && (tokens[0].length() > 0)){
+                    Log.i(TAG, "parameter:  " + tokens[0] + " value:  " + tokens[1]);
+                    switch (tokens[0]) {
+                        case "tag":
+                            job_tag = tokens[1];
+                            break;
+                        case "num":
+                            num = Integer.parseInt(tokens[1]);
+                            break;
+                        case "repeat":
+                            repeat = Boolean.parseBoolean(tokens[1]);
+                            break;
+                        case "analysis":
+                            analysis_name = tokens[1];
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        } catch (Exception e){
+            Log.e(TAG, "problem accessing Google Drive. Stopping the run.");
+            Log.e(TAG, "message:  " + e.getMessage());
+            state = STATE.STOPPING;
+        }
     }
 
     private void Stop() {
