@@ -28,15 +28,15 @@ public class MainActivity extends AppCompatActivity {
     // permissions request code:
     private static final int MY_PERMISSIONS_REQUEST = 100;
 
-
-    private BroadcastReceiver stateUpdater; // update start/stop button based on DAQ state
-    private BroadcastReceiver logUpdater;   // update log
+    private BroadcastReceiver logUpdater;     // update log
+    private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
+    private BroadcastReceiver storageUpdater; // update file storage button based on storage type
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        App.getDrive().signIn(this, REQUEST_CODE_GOOGLE_SIGN_IN);
+        App.getDriveObsolete().signIn(this, REQUEST_CODE_GOOGLE_SIGN_IN);
 
         if (!App.getPref().contains("run_num")) {
             SharedPreferences.Editor editor = App.getPref().edit();
@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
             case REQUEST_CODE_GOOGLE_SIGN_IN:
                 if (resultCode == RESULT_OK) {
                     Log.i(TAG, "Google sign-in success.");
-                    App.getDrive().initDrive();
+                    App.getDriveObsolete().initDrive();
                     break;
                 } else {
                     Log.e(TAG, "Google sign-in failure.");
@@ -113,8 +113,24 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
         App.getMessage().updateState();
+
+        storageUpdater = App.getMessage().onStorageUpdate(new Runnable() {
+            public void run() {
+                Button button = (Button) findViewById(R.id.button2);
+                TextView status = (TextView) findViewById(R.id.status2);
+                if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
+                    button.setText("Go online");
+                    status.setText("Using offline file storage.");
+                } else {
+                    button.setText("Go offline");
+                    status.setText("Using online file storage.");
+                }
+            }
+        });
+        App.getMessage().updateStorage();
+
+
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
             public void run() {
@@ -130,12 +146,26 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         App.getMessage().unregister(stateUpdater);
+        App.getMessage().unregister(storageUpdater);
         App.getMessage().unregister(logUpdater);
     }
 
     public void buttonClicked(View v) {
+        if (v == findViewById(R.id.button1)){
+            Log.i(TAG, "button1 pushed...");
+        }
+        if (v == findViewById(R.id.button2)){
+            Log.i(TAG, "button2 pushed...");
+            if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE){
+                App.goOnline();
+            } else {
+                App.goOffline();
+            }
+        }
+        if (true) { return; }
+
         Log.i(TAG, "button pushed...");
-        if (! App.getDrive().isInitialized()){
+        if (! App.getDriveObsolete().isInitialized()){
             Log.i(TAG, "Google Drive not initialized... refusing to start...");
             return;
         }

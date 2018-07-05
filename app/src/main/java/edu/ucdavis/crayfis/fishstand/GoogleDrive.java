@@ -19,6 +19,7 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
@@ -33,8 +34,28 @@ import java.util.concurrent.TimeoutException;
 // GoogleDrive:  wrapper for Google Drive API
 //
 
+public class GoogleDrive implements Storage {
 
-public class GoogleDrive {
+    OutputStream dummy_out;
+    InputStream dummy_in;
+
+    public void Init() throws DriveException{}
+
+    public InputStream getConfig() throws DriveException{
+        return dummy_in;
+    }
+
+    public OutputStream newLog() throws DriveException{
+        return dummy_out;
+    }
+    public void closeLog() throws DriveException{}
+
+    public OutputStream newOutput(String suffix, String mime_type) throws DriveException{
+        return dummy_out;
+    }
+    public void closeOutput() throws DriveException{
+    }
+
     private boolean initialized = false;
     private DriveClient driveClient;
     private DriveResourceClient driveResourceClient;
@@ -50,7 +71,7 @@ public class GoogleDrive {
         Log.i(TAG, "Signing in to Google");
         GoogleSignInOptions signInOptions =
                 new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                        .requestScopes(Drive.SCOPE_FILE)
+                        .requestScopes(com.google.android.gms.drive.Drive.SCOPE_FILE)
                         .build();
         GoogleSignInClient GoogleSignInClient = GoogleSignIn.getClient(activity, signInOptions);
         activity.startActivityForResult(GoogleSignInClient.getSignInIntent(), code);
@@ -68,8 +89,8 @@ public class GoogleDrive {
 
                         if ((driveClient != null)&&(driveResourceClient != null)){
                             try {
-                                Task<Void> sync_task = driveClient.requestSync();
-                                Tasks.await(sync_task);
+                                //Task<Void> sync_task = driveClient.requestSync();
+                                //Tasks.await(sync_task);
                             } catch (Exception e){
                                 Log.e(TAG, "Google Drive not initialized");
                                 Log.e(TAG, "message:  " + e.getMessage());
@@ -83,11 +104,6 @@ public class GoogleDrive {
                 });
     }
 
-    public class DriveException extends Exception {
-        public DriveException(String msg){
-            super(msg);
-        }
-    }
 
     public DriveFolder getWorkingFolder() throws DriveException {
 
@@ -229,7 +245,33 @@ public class GoogleDrive {
         }
     }
 
+    public DriveFile createOutputFile(String suffix, String mime_type) throws DriveException {
 
+        if (! initialized){ throw new DriveException("not initialized"); }
 
+        SharedPreferences pref = App.getPref();
+        int run_num = pref.getInt("run_num", 0);
 
+        try {
+            Task<DriveContents> contents_task = driveResourceClient.createContents();
+            DriveContents contents = Tasks.await(contents_task, 500, TimeUnit.MILLISECONDS);
+
+            MetadataChangeSet change_set = new MetadataChangeSet.Builder()
+                    .setTitle("run_" + run_num + "_" + suffix)
+                    .setMimeType(mime_type)
+                    .setStarred(false)
+                    .build();
+            DriveFolder workdir = getWorkingFolder();
+            Task<DriveFile> log_task = driveResourceClient.createFile(workdir, change_set, null);
+            DriveFile file = Tasks.await(log_task, 500, TimeUnit.MILLISECONDS);
+
+            return file;
+        } catch (ExecutionException e) {
+            throw new DriveException("invalid state");
+        } catch (InterruptedException e) {
+            throw new DriveException("interrupted");
+        } catch (TimeoutException e) {
+            throw new DriveException("timeout");
+        }
+    }
 }

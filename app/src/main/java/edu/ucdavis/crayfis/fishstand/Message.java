@@ -23,14 +23,18 @@ public class Message {
 
     // message types
     // these can be made as fine as possible, for now using fairly coarse categories:
-    static final public String UPDATE_LOG     = "update-log";   // update a log file
-    static final public String UPDATE_STATE   = "update-state"; // update a state of DAQ Service
+    static final public String UPDATE_LOG       = "update-log";     // update a log file
+    static final public String UPDATE_STATE     = "update-state";   // update a state of DAQ Service
+    static final public String UPDATE_STORAGE   = "update-storage"; // update file storage
 
     public void updateLog(){ send(UPDATE_LOG); }
     public BroadcastReceiver onLogUpdate(Runnable r){ return onMessage(r, UPDATE_LOG); }
 
     public void updateState(){ send(UPDATE_STATE); }
     public BroadcastReceiver onStateUpdate(Runnable r){ return onMessage(r, UPDATE_STATE); }
+
+    public void updateStorage(){ send(UPDATE_STORAGE); }
+    public BroadcastReceiver onStorageUpdate(Runnable r){ return onMessage(r, UPDATE_STORAGE); }
 
     // generic versions:
 

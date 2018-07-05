@@ -19,12 +19,14 @@ public class App extends Application implements Runnable {
     @SuppressLint("StaticFieldLeak")
     private static App instance;
 
+    private static final String TAG = "App";
+
     @Override
     public void onCreate(){
         super.onCreate();
         instance = this;
         context = getApplicationContext();
-        drive = new GoogleDrive();
+        gdrive = new GoogleDrive();
         message = new Message(context);
         pref = context.getSharedPreferences("MyPref", 0);
         if (!pref.contains("run_num")) {
@@ -36,13 +38,59 @@ public class App extends Application implements Runnable {
         logstr.setUpdate(new Runnable(){public void run(){message.updateLog();};});
         camera = null;
         handler = null;
-    }
 
+        goOffline();
+    }
+    // The singleton application context:
     private Context context;
     static public Context getContext(){ return instance.context; }
 
-    private GoogleDrive drive;
-    static public GoogleDrive getDrive(){ return instance.drive; }
+
+    // The storage interface, for Google Drive or local drive.
+    private Storage storage;
+    public static enum StorageType {OFFLINE_STORAGE, ONLINE_STORAGE};
+    StorageType storage_type;
+
+    public static StorageType getStorageType(){
+        return instance.storage_type;
+    }
+
+    static Storage getStorage(){
+        instance.storage_type = StorageType.OFFLINE_STORAGE;
+        return instance.storage;
+    }
+    public static void goOffline(){
+        // for now we'll simply pretend to be online.
+        instance.storage_type = StorageType.OFFLINE_STORAGE;
+        instance.storage = new LocalDrive();
+        App.getMessage().updateStorage();
+    }
+
+    public static void goOnline(){
+        // eventunally should have initializing type, to handle waiting gracefully...
+        //instance.storage_type = StorageType.INITIALIZING;
+
+        Runnable r = new Runnable() {
+            public void run() {
+                // for now we'll simply pretend to be online.
+                Storage storage = new LocalDrive();
+                try {
+                    instance.storage.Init();
+                } catch (Storage.DriveException e){
+                    Log.e(TAG, e.getMessage());
+                    Log.e(TAG, "Failure to initiallize online storage, remaining offline.");
+                }
+                instance.storage = storage;
+                instance.storage_type = StorageType.ONLINE_STORAGE;
+                App.getMessage().updateStorage();
+            }
+        };
+        (new Thread(r)).start();
+    }
+
+    // explicit GoogleDrive interface. (OBSOLETE).
+    private GoogleDrive gdrive;
+    static public GoogleDrive getDriveObsolete(){ return instance.gdrive; }
 
     private Message message;
     static public Message getMessage(){return instance.message; }

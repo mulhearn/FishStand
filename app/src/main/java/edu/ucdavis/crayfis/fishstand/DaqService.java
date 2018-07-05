@@ -29,6 +29,8 @@ import com.google.android.gms.tasks.Tasks;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -38,8 +40,7 @@ import java.util.concurrent.TimeoutException;
  */
 
 public class DaqService extends Service implements Runnable {
-    GoogleDrive drive;
-
+    Analysis analysis;
 
     // Foreground Service / Main Activity interaction via Intents and onStartCommand
     public interface ACTION {
@@ -50,7 +51,7 @@ public class DaqService extends Service implements Runnable {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand called");
-        
+
         if (intent.getAction().equals(ACTION.STARTFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Start Foreground Intent ");
             if (state!=STATE.READY){
@@ -233,7 +234,10 @@ public class DaqService extends Service implements Runnable {
     private void processImage(Image img) {
         Log.i(TAG,"processing image.");
 
-        SystemClock.sleep(5000);
+
+        if (analysis != null){
+            analysis.ProcessImage(img, events);
+        }
 
         try {
             img.close();
@@ -244,8 +248,8 @@ public class DaqService extends Service implements Runnable {
             //}
             return;
         }
-        events = events + 1;
         synchronized(count_lock) {
+            events = events + 1;
             processing = processing - 1;
         }
     }
@@ -260,15 +264,17 @@ public class DaqService extends Service implements Runnable {
         num = 0;
         repeat = false;
         String analysis_name = "";
+        List<String> params = new ArrayList<String>();
+        List<String> values = new ArrayList<String>();
         try {
-            DriveFile config = App.getDrive().getConfigFile();
-            DriveFile log = App.getDrive().createLogFile();
+            DriveFile config = App.getDriveObsolete().getConfigFile();
+            DriveFile log = App.getDriveObsolete().createLogFile();
 
             if (config == null){
                 throw new Exception("null config file");
             }
             Task<DriveContents> open_file =
-                    App.getDrive().getResourceClient().openFile(config, DriveFile.MODE_READ_ONLY);
+                    App.getDriveObsolete().getResourceClient().openFile(config, DriveFile.MODE_READ_ONLY);
             DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(contents.getInputStream()));
@@ -277,7 +283,7 @@ public class DaqService extends Service implements Runnable {
             while ((line = reader.readLine()) != null) {
                 Log.i(TAG, "config line:  " + line);
                 line = line.split("#")[0]; // remove comments
-                String[] tokens = line.split("\\s+");  // tokenize by whitespace
+                String[] tokens = line.split("\\s+",2);  // tokenize by first whitespace
                 if ((tokens.length > 1) && (tokens[0].length() > 0)){
                     Log.i(TAG, "parameter:  " + tokens[0] + " value:  " + tokens[1]);
                     switch (tokens[0]) {
@@ -296,12 +302,32 @@ public class DaqService extends Service implements Runnable {
                         default:
                             break;
                     }
+                    params.add(tokens[0]);
+                    values.add(tokens[1]);
                 }
             }
         } catch (Exception e){
             Log.e(TAG, "problem accessing Google Drive. Stopping the run.");
             Log.e(TAG, "message:  " + e.getMessage());
             state = STATE.STOPPING;
+        }
+        App.log().append("analysis:       " + analysis_name + "\n");
+        App.log().append("num of images:  " + num + "\n");
+        App.log().append("repeat mode:    " + repeat + "\n");
+        App.log().append("job tag:        " + job_tag + "\n");
+        switch (analysis_name) {
+            case "pixelstats":
+                analysis = PixelStats.create();
+                break;
+            case "photo":
+                analysis = Photo.create();
+                break;
+            default:
+                analysis = null;
+                break;
+        }
+        if (analysis != null){
+            analysis.Init(params.toArray(new String[params.size()]), values.toArray(new String[values.size()]));
         }
     }
 
@@ -311,6 +337,10 @@ public class DaqService extends Service implements Runnable {
             SystemClock.sleep(1000);
         }
         App.log().append("all image processing jobs have completed\n");
+
+        if (analysis != null){
+            analysis.ProcessRun();
+        }
 
         String summary = "";
         //summary += "run start:  " + run_start + "\n";
@@ -348,7 +378,10 @@ public class DaqService extends Service implements Runnable {
                     App.log().append("discarding unexpected image.\n");
                     img.close();
                 }
-                //if (app.getChosenAnalysis().Next(captureBuilder)) {
+                if (analysis != null){
+                    analysis.Next(captureBuilder);
+                }
+
                 App.log().append("Next: requesting new image capture\n");
                 App.getCamera().csession.capture(captureBuilder.build(), doNothingCaptureListener, App.getHandler());
                 synchronized(count_lock) {
