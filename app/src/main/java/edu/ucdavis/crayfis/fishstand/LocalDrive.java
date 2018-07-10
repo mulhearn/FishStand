@@ -28,16 +28,22 @@ public class LocalDrive implements Storage {
     }
 
     public InputStream getConfig() throws DriveException{
-        File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                "FishStand");
+
+        // editing of the config file is done with the iA Writer app, so config file is initially placed in
+        // expected location for that application:
+        File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                "iA Writer");
         path.mkdirs();
         final String filename = "config.txt";
-        File outfile = new File(path, filename);
-        if (! outfile.exists()) {
+        File config_file = new File(path, filename);
+
+        if (! config_file.exists()) {
             String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
-            OutputStream out = newOutputFile(filename);
-            Writer writer = new OutputStreamWriter(out);
+
             try {
+                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(config_file));
+                Writer writer = new OutputStreamWriter(bos);
+                writer.write("# config\n");
                 writer.write("# Fishstand Run Configuration File\n");
                 writer.write("# Created on Run " + date + "\n");
                 writer.write("tag initial\n");
@@ -45,17 +51,17 @@ public class LocalDrive implements Storage {
                 writer.write("repeat false\n");
                 writer.write("analysis none\n");
                 writer.flush();
-            } catch (IOException e) {
+                return getConfig();
+            } catch (Exception e){
                 Log.e(TAG, e.getMessage());
-                throw new DriveException("Could not write to log file.");
+                throw new DriveException("Could not create config file.");
             }
-            return getConfig();
         }
         try {
-            return new FileInputStream(outfile);
+            return new FileInputStream(config_file);
         } catch (FileNotFoundException e){
             Log.e(TAG, e.getMessage());
-            throw new DriveException("Could not create new output file.");
+            throw new DriveException("Could not open config file.");
         }
     }
 

@@ -22,9 +22,6 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    // activity codes:
-    private static final int REQUEST_CODE_GOOGLE_SIGN_IN = 0;
-    private static final int REQUEST_CODE_GOOGLE_INIT    = 1;
     // permissions request code:
     private static final int MY_PERMISSIONS_REQUEST = 100;
 
@@ -36,7 +33,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        App.getDriveObsolete().signIn(this, REQUEST_CODE_GOOGLE_SIGN_IN);
 
         if (!App.getPref().contains("run_num")) {
             SharedPreferences.Editor editor = App.getPref().edit();
@@ -59,7 +55,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         if (requestCode == MY_PERMISSIONS_REQUEST) {
@@ -74,20 +69,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        switch (requestCode) {
-            case REQUEST_CODE_GOOGLE_SIGN_IN:
-                if (resultCode == RESULT_OK) {
-                    Log.i(TAG, "Google sign-in success.");
-                    App.getDriveObsolete().initDrive();
-                    break;
-                } else {
-                    Log.e(TAG, "Google sign-in failure.");
-                }
-        }
-    }
 
     @Override
     protected void onStart() {
@@ -151,33 +132,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void buttonClicked(View v) {
-        if (v == findViewById(R.id.button1)){
-            Log.i(TAG, "button1 pushed...");
+        if (v == findViewById(R.id.button1)) {
+            Intent service = new Intent(MainActivity.this, DaqService.class);
+            if (DaqService.state == DaqService.STATE.READY) {
+                Log.i(TAG, "button starting foreground action...");
+                service.setAction(DaqService.ACTION.STARTFOREGROUND_ACTION);
+            } else {
+                Log.i(TAG, "button stopping foreground action...");
+                service.setAction(DaqService.ACTION.STOPFOREGROUND_ACTION);
+            }
+            startService(service);
+            return;
         }
-        if (v == findViewById(R.id.button2)){
-            Log.i(TAG, "button2 pushed...");
-            if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE){
+        if (v == findViewById(R.id.button2)) {
+            if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
                 App.goOnline();
             } else {
                 App.goOffline();
             }
-        }
-        if (true) { return; }
-
-        Log.i(TAG, "button pushed...");
-        if (! App.getDriveObsolete().isInitialized()){
-            Log.i(TAG, "Google Drive not initialized... refusing to start...");
             return;
         }
-
-        Intent service = new Intent(MainActivity.this, DaqService.class);
-        if (DaqService.state == DaqService.STATE.READY) {
-            Log.i(TAG, "button starting foreground action...");
-            service.setAction(DaqService.ACTION.STARTFOREGROUND_ACTION);
-        } else {
-            Log.i(TAG, "button stopping foreground action...");
-            service.setAction(DaqService.ACTION.STOPFOREGROUND_ACTION);
-        }
-        startService(service);
     }
 }

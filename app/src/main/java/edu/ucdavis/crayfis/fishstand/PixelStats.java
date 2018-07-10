@@ -108,23 +108,16 @@ public class PixelStats implements Analysis {
     }
 
     public void ProcessRun() {
-
-        // upload to Google Drive:
         try {
             String suffix = "pixelstats.dat";
-            DriveFile dfile = App.getDriveObsolete().createOutputFile(suffix,"application/dat");
-            Task<DriveContents> open_file =
-                    App.getDriveObsolete().getResourceClient().openFile(dfile, DriveFile.MODE_WRITE_ONLY);
-
-            DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
-            ParcelFileDescriptor pfd = contents.getParcelFileDescriptor();
-
-            DataOutputStream writer = new DataOutputStream(new FileOutputStream(pfd.getFileDescriptor()));
+            OutputStream output = App.getStorage().newOutput(suffix, "application/dat");
+            BufferedOutputStream bos = new BufferedOutputStream(output);
+            DataOutputStream writer = new DataOutputStream(bos);
             final int HEADER_SIZE = 5;
             final int VERSION = 1;
             writer.writeInt(HEADER_SIZE);
             writer.writeInt(VERSION);
-            // additional header items (should match above size!)
+            //additional header items (should match above size!)
             writer.writeInt(images);
             writer.writeInt(App.getCamera().raw_size.getWidth());
             writer.writeInt(App.getCamera().raw_size.getHeight());
@@ -135,19 +128,26 @@ public class PixelStats implements Analysis {
                 writer.writeLong(sum[i]);
                 writer.writeLong(ssq[i]);
             }
+            writer.flush();
 
-            MetadataChangeSet changes = new MetadataChangeSet.Builder()
-                .setStarred(false)
-                .setLastViewedByMeDate(new Date())
-                .build();
-            Task<Void> commit =
-                    App.getDriveObsolete().getResourceClient().commitContents(contents, changes);
+            //DriveFile dfile = App.getDriveObsolete().createOutputFile(suffix,"application/dat");
+            //Task<DriveContents> open_file =
+            //        App.getDriveObsolete().getResourceClient().openFile(dfile, DriveFile.MODE_WRITE_ONLY);
+            //DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
+            //ParcelFileDescriptor pfd = contents.getParcelFileDescriptor();
+            // out = new FileOutputStream(pfd.getFileDescriptor())
+
+            //MetadataChangeSet changes = new MetadataChangeSet.Builder()
+            //    .setStarred(false)
+            //    .setLastViewedByMeDate(new Date())
+            //    .build();
+            //Task<Void> commit =
+             //       App.getDriveObsolete().getResourceClient().commitContents(contents, changes);
             //Tasks.await(commit, 30000, TimeUnit.MILLISECONDS);
-            Tasks.await(commit);
-
+            //Tasks.await(commit);
         } catch(Exception e) {
-            Log.e("photo", "Failed to save results to Google Drive");
-            Log.e("photo", "message:  " + e.getMessage());
+            Log.e("photo", e.getMessage());
+            Log.e("photo", "Failed to save results.");
             return;
         }
     }

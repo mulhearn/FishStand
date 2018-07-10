@@ -26,7 +26,6 @@ public class App extends Application implements Runnable {
         super.onCreate();
         instance = this;
         context = getApplicationContext();
-        gdrive = new GoogleDrive();
         message = new Message(context);
         pref = context.getSharedPreferences("MyPref", 0);
         if (!pref.contains("run_num")) {
@@ -87,10 +86,6 @@ public class App extends Application implements Runnable {
         };
         (new Thread(r)).start();
     }
-
-    // explicit GoogleDrive interface. (OBSOLETE).
-    private GoogleDrive gdrive;
-    static public GoogleDrive getDriveObsolete(){ return instance.gdrive; }
 
     private Message message;
     static public Message getMessage(){return instance.message; }

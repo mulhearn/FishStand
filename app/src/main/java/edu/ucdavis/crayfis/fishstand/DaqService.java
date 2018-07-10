@@ -28,7 +28,9 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -152,6 +154,13 @@ public class DaqService extends Service implements Runnable {
 
         App.log().append("starting run " + App.getPref().getInt("run_num", 0) + "\n");
 
+        try {
+            OutputStream out = App.getStorage().newLog();
+        } catch (Exception e){
+            Log.e(TAG, e.getMessage());
+            Log.e(TAG, "could not open log file");
+        }
+
         if (App.getCamera().ireader == null) {
             state=STATE.READY;
             App.log().append("ireader is null after init...camera configuration failed.\n");
@@ -261,27 +270,19 @@ public class DaqService extends Service implements Runnable {
         processing = 0;
         events = 0;
         job_tag = "uninitialized";
-        num = 0;
+        num = 1;
         repeat = false;
         String analysis_name = "";
         List<String> params = new ArrayList<String>();
         List<String> values = new ArrayList<String>();
+
         try {
-            DriveFile config = App.getDriveObsolete().getConfigFile();
-            DriveFile log = App.getDriveObsolete().createLogFile();
+            InputStream in = App.getStorage().getConfig();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
 
-            if (config == null){
-                throw new Exception("null config file");
-            }
-            Task<DriveContents> open_file =
-                    App.getDriveObsolete().getResourceClient().openFile(config, DriveFile.MODE_READ_ONLY);
-            DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(contents.getInputStream()));
             String line;
-
             while ((line = reader.readLine()) != null) {
-                Log.i(TAG, "config line:  " + line);
+                //Log.i(TAG, "config line:  " + line);
                 line = line.split("#")[0]; // remove comments
                 String[] tokens = line.split("\\s+",2);  // tokenize by first whitespace
                 if ((tokens.length > 1) && (tokens[0].length() > 0)){
@@ -307,14 +308,16 @@ public class DaqService extends Service implements Runnable {
                 }
             }
         } catch (Exception e){
-            Log.e(TAG, "problem accessing Google Drive. Stopping the run.");
-            Log.e(TAG, "message:  " + e.getMessage());
+            Log.e(TAG, e.getMessage());
+            Log.e(TAG, "problem accessing job config file. Stopping the run.");
             state = STATE.STOPPING;
         }
+
         App.log().append("analysis:       " + analysis_name + "\n");
         App.log().append("num of images:  " + num + "\n");
         App.log().append("repeat mode:    " + repeat + "\n");
         App.log().append("job tag:        " + job_tag + "\n");
+
         switch (analysis_name) {
             case "pixelstats":
                 analysis = PixelStats.create();
