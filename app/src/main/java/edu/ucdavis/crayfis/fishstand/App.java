@@ -20,8 +20,6 @@ public class App extends Application implements Runnable {
 
     private static final String TAG = "App";
 
-    public static final String WORK_DIR = "FishStand";
-
     @Override
     public void onCreate(){
         super.onCreate();
@@ -34,22 +32,15 @@ public class App extends Application implements Runnable {
             editor.putInt("run_num", 0);
             editor.apply();
         }
-        logstr = new LogString();
-        logstr.setUpdate(new Runnable(){public void run(){message.updateLog();};});
+        logfile = new LogFile();
+        logfile.setUpdate(new Runnable(){public void run(){message.updateLog();};});
         camera = null;
         config = null;
         handler = null;
-        storage = new LocalDrive(WORK_DIR);
     }
     // The singleton application context:
     private Context context;
     static public Context getContext(){ return instance.context; }
-
-    // The storage interface:  DEPRECATED!
-    private Storage storage;
-    static Storage getStorage(){
-        return instance.storage;
-    }
 
     private Message message;
     static public Message getMessage(){return instance.message; }
@@ -58,8 +49,8 @@ public class App extends Application implements Runnable {
     static public SharedPreferences getPref(){return instance.pref; }
     static public SharedPreferences.Editor getEdit(){return instance.pref.edit(); }
 
-    private LogString logstr;
-    static public LogString log(){ return instance.logstr; }
+    private LogFile logfile;
+    static public LogFile log(){ return instance.logfile; }
 
     private Handler handler;
     static public Handler getHandler(){

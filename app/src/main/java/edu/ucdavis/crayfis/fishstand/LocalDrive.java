@@ -18,7 +18,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class LocalDrive implements Storage {
+public class LocalDrive {
     private static final String TAG = "LocalDrive";
     private String work_dir = "";
     private Writer log_writer = null;

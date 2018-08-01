@@ -161,8 +161,9 @@ public class DaqService extends Service implements Runnable {
         App.getMessage().updateState();
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().append("starting run " + run_num + "\n");
+        App.log().newRun(run_num);
 
+        App.log().append("starting run " + run_num + "\n");
 
         if (App.getCamera().ireader == null) {
             state=STATE.READY;
@@ -176,17 +177,12 @@ public class DaqService extends Service implements Runnable {
             img.close();
         }
 
-
-        App.getStorage().newLog(run_num);
-
         Init();
 
-        App.getStorage().appendLog("Finished initialization.\n");
+        App.log().append("Finished initialization.\n");
 
         if ((!delay_applied) && (delay>0)){
-            String str = "Delaying start of first run by " + delay + " seconds.\n";
-            App.getStorage().appendLog(str);
-            App.log().append(str);
+            App.log().append("Delaying start of first run by " + delay + " seconds.\n");
             SystemClock.sleep(delay*1000);
             delay_applied = true;
         }
@@ -202,9 +198,7 @@ public class DaqService extends Service implements Runnable {
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
-        App.getStorage().appendLog("ending run at " + date + "\n");
-
-        App.log().append("ending run " + run_num + "\n");
+        App.log().append("ending run " + run_num + " at " + date + "\n");
         run_num = run_num + 1;
         SharedPreferences.Editor edit = App.getEdit();
         edit.putInt("run_num", run_num);
@@ -298,7 +292,6 @@ public class DaqService extends Service implements Runnable {
         if (verbose){
             String msg = "finished processing " + events + " events.\n";
             App.log().append(msg);
-            App.getStorage().appendLog(msg);
         }
     }
 
@@ -324,7 +317,6 @@ public class DaqService extends Service implements Runnable {
         logstr += "job tag:        " + job_tag + "\n";
         logstr += "delay:          " + delay + "\n";
         App.log().append(logstr);
-        App.getStorage().appendLog(logstr);
 
         switch (analysis_name) {
             case "pixelstats":

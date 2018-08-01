@@ -17,6 +17,7 @@ import com.google.android.gms.tasks.Tasks;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -189,7 +190,6 @@ public class PixelStats implements Analysis {
         logstr += "pixel offset:      " + offset + "\n";
 
         App.log().append(logstr);
-        App.getStorage().appendLog(logstr);
     }
 
 
@@ -211,10 +211,8 @@ public class PixelStats implements Analysis {
 
                 String filename = "run_" + run_num + "_part_" + ifile + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-
-                OutputStream output = App.getStorage().newOutput(filename, "application/dat");
-                BufferedOutputStream bos = new BufferedOutputStream(output);
-                DataOutputStream writer = new DataOutputStream(bos);
+                OutputStream out = Storage.newOutput(filename);
+                DataOutputStream writer = new DataOutputStream(out);
                 final int HEADER_SIZE = 12;
                 final int VERSION = 1;
                 writer.writeInt(HEADER_SIZE);
@@ -241,7 +239,6 @@ public class PixelStats implements Analysis {
                     writer.writeLong(ssq[i]);
                 }
                 writer.flush();
-                App.getStorage().closeOutput();
             }
         } catch(Exception e) {
             Log.e(TAG, e.getMessage());

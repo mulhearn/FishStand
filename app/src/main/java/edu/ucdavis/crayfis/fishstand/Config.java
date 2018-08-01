@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Environment;
-import android.support.v4.content.FileProvider;
 import android.util.Log;
 
 import java.io.BufferedOutputStream;
@@ -23,8 +22,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-
-import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 
 /**
  * Created by mulhearn on 7/31/18.
@@ -131,7 +128,7 @@ public class Config {
 
     private File getFile() {
         File path = new File(Environment.getExternalStoragePublicDirectory(""),
-                App.WORK_DIR);
+                Storage.WORK_DIR);
         path.mkdirs();
         final String filename = "config.txt";
         return new File(path, filename);

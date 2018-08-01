@@ -59,12 +59,10 @@ public class Photo implements Analysis {
         }
 
         // save to output file:
-        String suffix = "image_" + System.currentTimeMillis() + ".jpg";
-        OutputStream output = App.getStorage().newOutput(suffix, "application/jpg");
+        String filename = "image_" + System.currentTimeMillis() + ".jpg";
+        OutputStream output = Storage.newOutput(filename);
         if (output != null) {
-            BufferedOutputStream bos = new BufferedOutputStream(output);
-            bm.compress(Bitmap.CompressFormat.JPEG, 50, bos);
-            App.getStorage().closeOutput();
+            bm.compress(Bitmap.CompressFormat.JPEG, 50, output);
         } else {
             App.log().append("Failed to write image file.");
         }
