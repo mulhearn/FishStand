@@ -27,7 +27,7 @@ import android.util.Size;
 import android.view.Surface;
 
 
-public class CameraConfig {
+public class Camera {
 
     //camera2 api objects
     public String cid;

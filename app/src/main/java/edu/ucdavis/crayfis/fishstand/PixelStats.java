@@ -74,26 +74,10 @@ public class PixelStats implements Analysis {
     private PixelStats() {
     }
 
-    public void Init(String[] names, String[] values) {
+    public void Init() {
         int run_offset = App.getPref().getInt("run_num", 0);
 
-        List<String> namesarr = Arrays.asList(names);
-
-        if (namesarr.contains("first")) {
-            int index = namesarr.indexOf("first");
-            first = Integer.parseInt(values[index]);
-            App.log().append("First run number for offset calculation:  " + first + "\n");
-        }
-        if (namesarr.contains("fixed_offset")) {
-            int index = namesarr.indexOf("fixed_offset");
-            fixed_offset = Integer.parseInt(values[index]);
-            App.log().append("Fixed offset value:  " + fixed_offset + "\n");
-        }
-        if (namesarr.contains("num_repeats")) {
-            int index = namesarr.indexOf("num_repeats");
-            num_repeats = Integer.parseInt(values[index]);
-            App.log().append("Number of repeats per setting:  " + num_repeats + "\n");
-        }
+        first = 0;
 
         if (first > 0){
             if (run_offset > first){

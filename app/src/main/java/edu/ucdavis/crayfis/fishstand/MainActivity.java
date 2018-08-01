@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
 
         Button button = (Button) findViewById(R.id.button2);
         TextView status = (TextView) findViewById(R.id.status2);
-        button.setText("Read Config");
+        button.setText("Config");
         status.setText("unused status line...");
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
@@ -131,9 +131,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (v == findViewById(R.id.button2)) {
-            Toast toast = Toast.makeText(this, "Not yet implemented", Toast.LENGTH_SHORT);
-            toast.show();
+            App.getConfig().editConfig(this);
         }
     }
-
 }

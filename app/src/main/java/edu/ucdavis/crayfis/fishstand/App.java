@@ -1,13 +1,11 @@
 package edu.ucdavis.crayfis.fishstand;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 
 //
 //  App:  Application wide access to singletons via static functions, e.g.:
@@ -21,6 +19,8 @@ public class App extends Application implements Runnable {
     private static App instance;
 
     private static final String TAG = "App";
+
+    public static final String WORK_DIR = "FishStand";
 
     @Override
     public void onCreate(){
@@ -37,9 +37,9 @@ public class App extends Application implements Runnable {
         logstr = new LogString();
         logstr.setUpdate(new Runnable(){public void run(){message.updateLog();};});
         camera = null;
+        config = null;
         handler = null;
-
-        storage = new LocalDrive("FishStand");
+        storage = new LocalDrive(WORK_DIR);
     }
     // The singleton application context:
     private Context context;
@@ -70,13 +70,21 @@ public class App extends Application implements Runnable {
         return instance.handler;
     }
 
-    private CameraConfig camera;
-    static public CameraConfig getCamera(){
+    private Camera camera;
+    static public Camera getCamera(){
         if (instance.camera == null) {
-            instance.camera = new CameraConfig();
+            instance.camera = new Camera();
             instance.camera.Init();
         }
         return instance.camera;
+    }
+
+    private Config config;
+    static public Config getConfig(){
+        if (instance.config == null) {
+            instance.config = new Config();
+        }
+        return instance.config;
     }
 
     public void run(){

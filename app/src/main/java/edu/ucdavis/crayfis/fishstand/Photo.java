@@ -20,7 +20,7 @@ public class Photo implements Analysis {
     private Photo() {
     }
 
-    public void Init(String[] names, String[] values) {
+    public void Init() {
     }
 
     public void Next(CaptureRequest.Builder request) {

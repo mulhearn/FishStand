@@ -6,9 +6,6 @@ import java.io.OutputStream;
 
 interface Storage {
 
-    InputStream getConfig();
-    void closeConfig();
-
     void newLog(int run);
     void appendLog(String str);
 

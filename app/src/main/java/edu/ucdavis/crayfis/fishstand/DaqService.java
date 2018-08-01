@@ -221,7 +221,7 @@ public class DaqService extends Service implements Runnable {
         stopSelf();
     }
 
-    // delegation of CameraCaptureSession's StateCallback, called from CameraConfig
+    // delegation of CameraCaptureSession's StateCallback, called from Camera
     static public void onReady(CameraCaptureSession session) {
     }
     static public void onActive(CameraCaptureSession session) {
@@ -308,54 +308,15 @@ public class DaqService extends Service implements Runnable {
         requests = 0;
         processing = 0;
         events = 0;
-        job_tag = "uninitialized";
-        num = 1;
-        delay = 0;
-        repeat = false;
-        String analysis_name = "";
-        List<String> params = new ArrayList<String>();
-        List<String> values = new ArrayList<String>();
 
-        try {
-            InputStream in = App.getStorage().getConfig();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+        App.getConfig().parseConfig();
+        App.getConfig().logConfig();
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                //Log.i(TAG, "config line:  " + line);
-                line = line.split("#")[0]; // remove comments
-                String[] tokens = line.split("\\s+",2);  // tokenize by first whitespace
-                if ((tokens.length > 1) && (tokens[0].length() > 0)){
-                    Log.i(TAG, "parameter:  " + tokens[0] + " value:  " + tokens[1]);
-                    switch (tokens[0]) {
-                        case "tag":
-                            job_tag = tokens[1];
-                            break;
-                        case "num":
-                            num = Integer.parseInt(tokens[1]);
-                            break;
-                        case "repeat":
-                            repeat = Boolean.parseBoolean(tokens[1]);
-                            break;
-                        case "analysis":
-                            analysis_name = tokens[1];
-                            break;
-                        case "delay":
-                            delay = Integer.parseInt(tokens[1]);
-                            break;
-                        default:
-                            break;
-                    }
-                    params.add(tokens[0]);
-                    values.add(tokens[1]);
-                }
-            }
-            App.getStorage().closeConfig();
-        } catch (Exception e){
-            Log.e(TAG, e.getMessage());
-            Log.e(TAG, "problem accessing job config file. Stopping the run.");
-            state = STATE.STOPPING;
-        }
+        job_tag = App.getConfig().getString("tag", "unspecified");
+        num     = App.getConfig().getInteger("num", 1);
+        delay   = App.getConfig().getInteger("delay", 0);
+        repeat  = App.getConfig().getBoolean("repeat", false);
+        String analysis_name = App.getConfig().getString("analysis", "");
 
         String logstr =  "analysis:       " + analysis_name + "\n";
         logstr += "num of images:  " + num + "\n";
@@ -377,7 +338,7 @@ public class DaqService extends Service implements Runnable {
                 break;
         }
         if (analysis != null){
-            analysis.Init(params.toArray(new String[params.size()]), values.toArray(new String[values.size()]));
+            analysis.Init();
         }
     }
 
