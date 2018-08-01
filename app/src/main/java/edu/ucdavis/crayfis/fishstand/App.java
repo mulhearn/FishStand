@@ -1,6 +1,7 @@
 package edu.ucdavis.crayfis.fishstand;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -15,7 +16,7 @@ import android.util.Log;
 //
 
 
-public class App extends Application implements Runnable {
+public class App extends Application implements Runnable, Storage.CallBack {
     @SuppressLint("StaticFieldLeak")
     private static App instance;
 
@@ -47,44 +48,48 @@ public class App extends Application implements Runnable {
 
     // The storage interface, for Google Drive or local drive.
     private Storage storage;
-    public static enum StorageType {OFFLINE_STORAGE, ONLINE_STORAGE};
+    public static enum StorageType   {OFFLINE_STORAGE, ONLINE_STORAGE};
+    public static enum StorageStatus {INITIALIZING, READY}
     StorageType storage_type;
+    StorageStatus storage_status;
 
     public static StorageType getStorageType(){
         return instance.storage_type;
     }
 
+    public static StorageStatus getStorageStatus(){
+        return instance.storage_status;
+    }
+
     static Storage getStorage(){
-        instance.storage_type = StorageType.OFFLINE_STORAGE;
         return instance.storage;
     }
+
     public static void goOffline(){
-        // for now we'll simply pretend to be online.
+        instance.storage_status = StorageStatus.INITIALIZING;
         instance.storage_type = StorageType.OFFLINE_STORAGE;
-        instance.storage = new LocalDrive();
+        instance.storage = new LocalDrive("FishStand");
+        instance.storage_status = StorageStatus.READY;
         App.getMessage().updateStorage();
     }
 
-    public static void goOnline(){
-        // eventunally should have initializing type, to handle waiting gracefully...
-        //instance.storage_type = StorageType.INITIALIZING;
+    public static void goOnline(final Activity activity, final int availableRequestCode){
+        instance.storage_status = StorageStatus.INITIALIZING;
+        instance.storage_type = StorageType.ONLINE_STORAGE;
+        App.getMessage().updateStorage();
+        instance.storage = GoogleDrive.newGoogleDrive(activity, availableRequestCode, instance, "FishStand");
+    }
 
-        Runnable r = new Runnable() {
-            public void run() {
-                // for now we'll simply pretend to be online.
-                Storage storage = new LocalDrive();
-                try {
-                    instance.storage.Init();
-                } catch (Storage.DriveException e){
-                    Log.e(TAG, e.getMessage());
-                    Log.e(TAG, "Failure to initiallize online storage, remaining offline.");
-                }
-                instance.storage = storage;
-                instance.storage_type = StorageType.ONLINE_STORAGE;
-                App.getMessage().updateStorage();
-            }
-        };
-        (new Thread(r)).start();
+    public void reportStorageReady(){
+        storage_status = StorageStatus.READY;
+        App.getMessage().updateStorage();
+    }
+
+    public void reportStorageFailure(String msg){
+        Log.e(TAG, "Storage Failure detected.  Halting DAQ and going offline.");
+        Log.e(TAG, "Message:  " + msg);
+        getMessage().forceStop();
+        goOffline();
     }
 
     private Message message;

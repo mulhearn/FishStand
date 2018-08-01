@@ -4,19 +4,13 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
-import android.os.Environment;
-import android.util.Log;
-
 
 import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 public class Photo implements Analysis {
-    int num = 1;
-    String tag = "";
+    //public static final String TAG = "Photo";
 
     public static Analysis create() {
         Photo photo = new Photo();
@@ -37,8 +31,8 @@ public class Photo implements Analysis {
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();
 
-        int w = (int) (0.5 * ((float) img.getWidth()));
-        int h = (int) (0.5 * ((float) img.getHeight()));
+        int w = (int) (0.1 * ((float) img.getWidth()));
+        int h = (int) (0.1 * ((float) img.getHeight()));
         //make a square shaped image:
         if (w > h) h = w;
         else w = h;
@@ -65,38 +59,16 @@ public class Photo implements Analysis {
         }
 
         // save to output file:
-        try {
-            String suffix = "image_" + System.currentTimeMillis() + ".jpg";
-            OutputStream output = App.getStorage().newOutput(suffix, "application/jpg");
+        String suffix = "image_" + System.currentTimeMillis() + ".jpg";
+        OutputStream output = App.getStorage().newOutput(suffix, "application/jpg");
+        if (output != null) {
             BufferedOutputStream bos = new BufferedOutputStream(output);
             bm.compress(Bitmap.CompressFormat.JPEG, 50, bos);
-        } catch (Exception e) {
-            Log.e("photo", "Failed to save image to local storage.");
+            App.getStorage().closeOutput();
+        } else {
+            App.log().append("Failed to write image file.");
         }
 
-        // upload to Google Drive:
-        //try {
-            //String suffix = "image_" + img_index + ".jpg";
-            //DriveFile dfile = App.getDriveObsolete().createOutputFile(suffix,"application/jpg");
-            //Task<DriveContents> open_file =
-            //        App.getDriveObsolete().getResourceClient().openFile(dfile, DriveFile.MODE_WRITE_ONLY);
-            //DriveContents contents = Tasks.await(open_file, 30000, TimeUnit.MILLISECONDS);
-            //ParcelFileDescriptor pfd = contents.getParcelFileDescriptor();
-            //BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(pfd.getFileDescriptor()));
-            //bm.compress(Bitmap.CompressFormat.JPEG, 50, bos);
-            //bos.flush();
-            //MetadataChangeSet changes = new MetadataChangeSet.Builder()
-            //    .setStarred(false)
-            //    .setLastViewedByMeDate(new Date())
-            //    .build();
-            //Task<Void> commit =
-            //        App.getDriveObsolete().getResourceClient().commitContents(contents, changes);
-            //Tasks.await(commit, 30000, TimeUnit.MILLISECONDS);
-        //} catch(Exception e) {
-            //Log.e("photo", "Failed to save image to Google Drive");
-            //Log.e("photo", "message:  " + e.getMessage());
-            //return;
-        //}
     }
 
     public void ProcessRun() {

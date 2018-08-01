@@ -3,6 +3,7 @@ package edu.ucdavis.crayfis.fishstand;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -21,21 +22,14 @@ import android.view.Surface;
 import android.widget.Toast;
 import android.os.IBinder;
 
-import com.google.android.gms.drive.DriveContents;
-import com.google.android.gms.drive.DriveFile;
-import com.google.android.gms.drive.DriveFolder;
-import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
-
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.Locale;
 
 /**
  * Created by mulhearn on 4/28/18.
@@ -44,15 +38,44 @@ import java.util.concurrent.TimeoutException;
 public class DaqService extends Service implements Runnable {
     Analysis analysis;
 
+    // State of the DAQ:
+    public enum STATE {
+        RUNNING,   // A run is underway
+        STOPPING,  // A run stop has been requested, but worker threads may not have finishd yet
+        READY;     // Ready for a new run.
+    };
+
+    private final Object count_lock = new Object();
+    private int requests, processing, events;
+    private long run_start, run_end;
+
+    private String job_tag;
+    private int num;
+    private Boolean repeat;
+    private int delay;
+    private Boolean delay_applied;  // has the initial delay already been applied?
+
+    public static STATE state = STATE.READY;
+    public static final String TAG = "DaqService";
+
+    private BroadcastReceiver forceStop = null;
+
     // Foreground Service / Main Activity interaction via Intents and onStartCommand
-    public interface ACTION {
-        public static String MAIN_ACTION = "edu.ucdavis.fishstand.daq.action.main";
-        public static String STARTFOREGROUND_ACTION = "edu.ucdavis.fishstand.daq.action.startforeground";
-        public static String STOPFOREGROUND_ACTION = "edu.ucdavis.fishstand.daq.action.stopforeground";
+    interface ACTION {
+        String MAIN_ACTION = "edu.ucdavis.fishstand.daq.action.main";
+        String STARTFOREGROUND_ACTION = "edu.ucdavis.fishstand.daq.action.startforeground";
+        String STOPFOREGROUND_ACTION = "edu.ucdavis.fishstand.daq.action.stopforeground";
     }
+
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand called");
+
+        if (intent == null){
+            Log.e(TAG, "onStartCommand called with null intent.");
+            return START_STICKY;
+        }
 
         if (intent.getAction().equals(ACTION.STARTFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Start Foreground Intent ");
@@ -60,18 +83,34 @@ public class DaqService extends Service implements Runnable {
                 Log.i(TAG, "could not start DAQ service, state is not READY");
                 return START_STICKY;
             }
+
+            forceStop = App.getMessage().onForceStop(new Runnable() {
+                public void run() { externalStop(); }
+            });
+
+            delay_applied = false;
             new Thread(this).start();
             showNotification();
             Toast.makeText(this, "DAQ Started.", Toast.LENGTH_SHORT).show();
+
         } else if (intent.getAction().equals(
                 ACTION.STOPFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Stop Foreground Intent");
-            if (state == STATE.RUNNING) {
-                state = STATE.STOPPING;
-                Toast.makeText(this, "DAQ stopping.", Toast.LENGTH_SHORT).show();
-            }
+            Toast.makeText(this, "DAQ stopping.", Toast.LENGTH_SHORT).show();
+            externalStop();
         }
         return START_STICKY;
+    }
+
+    // handle an externally driven stop request:
+    private void externalStop(){
+        repeat = false;
+        if (state == STATE.RUNNING) {
+            state = STATE.STOPPING;
+        }
+        if (forceStop != null) {
+            App.getMessage().unregister(forceStop);
+        }
     }
 
     // Required notification for running service in Foreground:
@@ -103,33 +142,6 @@ public class DaqService extends Service implements Runnable {
 
     }
 
-
-    // State of the DAQ:
-    public enum STATE {
-        RUNNING,   // A run is underway
-        STOPPING,  // A run stop has been requested, but worker threads may not have finishd yet
-        READY;     // Ready for a new run.
-    };
-
-    private enum IMAGE_JOB_STATUS {SUCCESS, FAILED, STOPPED, LOST}
-
-    public class DaqException extends Exception {
-        public DaqException(String msg){
-            super(msg);
-        }
-    }
-
-    private final Object count_lock = new Object();
-    private int requests, processing, events;
-    private long run_start, run_end;
-
-    private String job_tag;
-    private int num;
-    private Boolean repeat;
-
-    public static STATE state = STATE.READY;
-    public static final String TAG = "DaqService";
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -152,22 +164,36 @@ public class DaqService extends Service implements Runnable {
         state = STATE.RUNNING;
         App.getMessage().updateState();
 
-        App.log().append("starting run " + App.getPref().getInt("run_num", 0) + "\n");
+        int run_num = App.getPref().getInt("run_num", 0);
+        App.log().append("starting run " + run_num + "\n");
 
-        try {
-            OutputStream out = App.getStorage().newLog();
-        } catch (Exception e){
-            Log.e(TAG, e.getMessage());
-            Log.e(TAG, "could not open log file");
-        }
 
         if (App.getCamera().ireader == null) {
             state=STATE.READY;
             App.log().append("ireader is null after init...camera configuration failed.\n");
             return;
         }
+        // clear any stale photo:
+        Image img = App.getCamera().ireader.acquireLatestImage();
+        if (img != null){
+            App.log().append("discarding unexpected image.\n");
+            img.close();
+        }
+
+
+        App.getStorage().newLog(run_num);
 
         Init();
+
+        App.getStorage().appendLog("Finished initialization.\n");
+
+        if ((!delay_applied) && (delay>0)){
+            String str = "Delaying start of first run by " + delay + " seconds.\n";
+            App.getStorage().appendLog(str);
+            App.log().append(str);
+            SystemClock.sleep(delay*1000);
+            delay_applied = true;
+        }
 
         while(state == STATE.RUNNING){
             Next();
@@ -178,7 +204,10 @@ public class DaqService extends Service implements Runnable {
         }
         Stop();
 
-        int run_num = App.getPref().getInt("run_num", 0);
+        String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
+
+        App.getStorage().appendLog("ending run at " + date + "\n");
+
         App.log().append("ending run " + run_num + "\n");
         run_num = run_num + 1;
         SharedPreferences.Editor edit = App.getEdit();
@@ -212,7 +241,9 @@ public class DaqService extends Service implements Runnable {
     ImageReader.OnImageAvailableListener daqImageListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(final ImageReader reader) {
-            App.log().append("image available called.  processing=" + processing + "\n");
+            if (events < 10) {
+                App.log().append("Image available called.  processing=" + processing + "\n");
+            }
             final Image img = reader.acquireNextImage();
             if (img == null) {
                 Log.e(TAG,"Image returned from reader was Null.");
@@ -239,10 +270,15 @@ public class DaqService extends Service implements Runnable {
         }
     };
 
+    private boolean verbose_event(int event) {
+        if (event < 10) return true;
+        if ((event < 100) && (event%10 == 0)) return true;
+        if ((event%100 == 0)) return true;
+        return false;
+    }
+
 
     private void processImage(Image img) {
-        Log.i(TAG,"processing image.");
-
 
         if (analysis != null){
             analysis.ProcessImage(img, events);
@@ -257,9 +293,16 @@ public class DaqService extends Service implements Runnable {
             //}
             return;
         }
+        boolean verbose = false;
         synchronized(count_lock) {
             events = events + 1;
             processing = processing - 1;
+            verbose = verbose_event(events);
+        }
+        if (verbose){
+            String msg = "finished processing " + events + " events.\n";
+            App.log().append(msg);
+            App.getStorage().appendLog(msg);
         }
     }
 
@@ -271,6 +314,7 @@ public class DaqService extends Service implements Runnable {
         events = 0;
         job_tag = "uninitialized";
         num = 1;
+        delay = 0;
         repeat = false;
         String analysis_name = "";
         List<String> params = new ArrayList<String>();
@@ -300,6 +344,9 @@ public class DaqService extends Service implements Runnable {
                         case "analysis":
                             analysis_name = tokens[1];
                             break;
+                        case "delay":
+                            delay = Integer.parseInt(tokens[1]);
+                            break;
                         default:
                             break;
                     }
@@ -307,16 +354,20 @@ public class DaqService extends Service implements Runnable {
                     values.add(tokens[1]);
                 }
             }
+            App.getStorage().closeConfig();
         } catch (Exception e){
             Log.e(TAG, e.getMessage());
             Log.e(TAG, "problem accessing job config file. Stopping the run.");
             state = STATE.STOPPING;
         }
 
-        App.log().append("analysis:       " + analysis_name + "\n");
-        App.log().append("num of images:  " + num + "\n");
-        App.log().append("repeat mode:    " + repeat + "\n");
-        App.log().append("job tag:        " + job_tag + "\n");
+        String logstr =  "analysis:       " + analysis_name + "\n";
+        logstr += "num of images:  " + num + "\n";
+        logstr += "repeat mode:    " + repeat + "\n";
+        logstr += "job tag:        " + job_tag + "\n";
+        logstr += "delay:          " + delay + "\n";
+        App.log().append(logstr);
+        App.getStorage().appendLog(logstr);
 
         switch (analysis_name) {
             case "pixelstats":
@@ -336,10 +387,18 @@ public class DaqService extends Service implements Runnable {
 
     private void Stop() {
         App.log().append("run stopping\n");
-        while(processing > 0) {
+
+        // give jobs a minute to finish up:
+        int count = 0;
+        while((processing > 0)&&(count<60)) {
             SystemClock.sleep(1000);
+            count++;
         }
-        App.log().append("all image processing jobs have completed\n");
+        if (processing == 0) {
+            App.log().append("all image processing jobs have completed\n");
+        } else {
+            App.log().append("timeout waiting for all image processing jobs to complete.\n");
+        }
 
         if (analysis != null){
             analysis.ProcessRun();
@@ -376,16 +435,19 @@ public class DaqService extends Service implements Runnable {
                 captureBuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
                 captureBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
 
-                Image img = App.getCamera().ireader.acquireLatestImage();
-                if (img != null){
-                    App.log().append("discarding unexpected image.\n");
-                    img.close();
-                }
+                //Image img = App.getCamera().ireader.acquireLatestImage();
+                //if (img != null){
+                //    App.log().append("discarding unexpected image.\n");
+                //    img.close();
+                //}
                 if (analysis != null){
                     analysis.Next(captureBuilder);
                 }
 
-                App.log().append("Next: requesting new image capture\n");
+                if (events < 10) {
+                    App.log().append("Next: requesting new image capture\n");
+                }
+
                 App.getCamera().csession.capture(captureBuilder.build(), doNothingCaptureListener, App.getHandler());
                 synchronized(count_lock) {
                     processing++;
@@ -400,20 +462,12 @@ public class DaqService extends Service implements Runnable {
 
     final private CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
         @Override public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
-            long exp = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-            long iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-            //LensShadingMap map = result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
+        long exp = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        long iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        if (events < 10) {
             App.log().append("capture complete with exposure " + exp + " sensitivity " + iso + "\n");
-            //if (map != null) {
-            //    int max = map.getGainFactorCount();
-            //    log.append("shading map has dimension " + map.getColumnCount() + " by " + map.getRowCount() + " factors " + max + "\n");
-            //    float g[] = new float[max];
-            //    map.copyGainFactors(g,0);
-            //    for (int i=0; i<max; i++){
-            //        log.append("" + i + ":  " + g[i] + "\n");
-            //    }
-            //}
-            super.onCaptureCompleted(session, request, result);
+        }
+        super.onCaptureCompleted(session, request, result);
         }
     };
 

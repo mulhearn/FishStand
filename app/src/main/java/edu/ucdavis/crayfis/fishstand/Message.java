@@ -23,26 +23,30 @@ public class Message {
 
     // message types
     // these can be made as fine as possible, for now using fairly coarse categories:
-    static final public String UPDATE_LOG       = "update-log";     // update a log file
-    static final public String UPDATE_STATE     = "update-state";   // update a state of DAQ Service
-    static final public String UPDATE_STORAGE   = "update-storage"; // update file storage
+    private static final String UPDATE_LOG       = "update-log";     // update a log file
+    private static final String UPDATE_STATE     = "update-state";   // update a state of DAQ Service
+    private static final String UPDATE_STORAGE   = "update-storage"; // update file storage
+    private static final String FORCE_STOP       = "force-stop";     // force stop to DAQ
 
-    public void updateLog(){ send(UPDATE_LOG); }
-    public BroadcastReceiver onLogUpdate(Runnable r){ return onMessage(r, UPDATE_LOG); }
+    void updateLog(){ send(UPDATE_LOG); }
+    BroadcastReceiver onLogUpdate(Runnable r){ return onMessage(r, UPDATE_LOG); }
 
-    public void updateState(){ send(UPDATE_STATE); }
-    public BroadcastReceiver onStateUpdate(Runnable r){ return onMessage(r, UPDATE_STATE); }
+    void updateState(){ send(UPDATE_STATE); }
+    BroadcastReceiver onStateUpdate(Runnable r){ return onMessage(r, UPDATE_STATE); }
 
-    public void updateStorage(){ send(UPDATE_STORAGE); }
-    public BroadcastReceiver onStorageUpdate(Runnable r){ return onMessage(r, UPDATE_STORAGE); }
+    void updateStorage(){ send(UPDATE_STORAGE); }
+    BroadcastReceiver onStorageUpdate(Runnable r){ return onMessage(r, UPDATE_STORAGE); }
 
-    // generic versions:
+    void forceStop(){ send(FORCE_STOP); }
+    BroadcastReceiver onForceStop(Runnable r){ return onMessage(r, FORCE_STOP); }
 
-    public void unregister(BroadcastReceiver r) {
+    void unregister(BroadcastReceiver r) {
         LocalBroadcastManager.getInstance(context.getApplicationContext()).unregisterReceiver(r);
     }
 
-    public BroadcastReceiver onMessage(final Runnable r, final String action){
+    // generic versions:
+
+    private BroadcastReceiver onMessage(final Runnable r, final String action){
         IntentFilter filter = new IntentFilter(action);
 
         BroadcastReceiver receiver = new BroadcastReceiver(){
@@ -56,7 +60,7 @@ public class Message {
         return receiver;
     }
 
-    public void send(final String action) {
+    private void send(final String action) {
         LocalBroadcastManager.getInstance(context.getApplicationContext()).sendBroadcast(new Intent(action));
     }
 

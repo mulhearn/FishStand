@@ -1,8 +1,6 @@
 package edu.ucdavis.crayfis.fishstand;
 
-
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
 import android.os.Environment;
 import android.util.Log;
 
@@ -22,17 +20,23 @@ import java.util.Locale;
 
 public class LocalDrive implements Storage {
     private static final String TAG = "LocalDrive";
+    private String work_dir = "";
+    private Writer log_writer = null;
 
-    public void Init() throws DriveException{
-        // no initialization for offline storage...
+    public LocalDrive(String work_dir){
+        this.work_dir = work_dir;
     }
 
-    public InputStream getConfig() throws DriveException{
+    public InputStream getConfig() {
 
         // editing of the config file is done with the iA Writer app, so config file is initially placed in
         // expected location for that application:
-        File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-                "iA Writer");
+        //File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+        //        "iA Writer");
+
+        File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "Sync/FishStand");
+
         path.mkdirs();
         final String filename = "config.txt";
         File config_file = new File(path, filename);
@@ -50,58 +54,59 @@ public class LocalDrive implements Storage {
                 writer.write("num 1\n");
                 writer.write("repeat false\n");
                 writer.write("analysis none\n");
+                writer.write("delay 0\n");
                 writer.flush();
                 return getConfig();
             } catch (Exception e){
                 Log.e(TAG, e.getMessage());
-                throw new DriveException("Could not create config file.");
             }
         }
         try {
             return new FileInputStream(config_file);
         } catch (FileNotFoundException e){
             Log.e(TAG, e.getMessage());
-            throw new DriveException("Could not open config file.");
         }
+        return null;
     }
 
-    public OutputStream newLog() throws DriveException{
-        SharedPreferences pref = App.getPref();
-        int run_num = pref.getInt("run_num", 0);
+    public void closeConfig() {
+        //nothing needed here for local storage...
+    }
+
+    public void newLog(int run_num) {
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
         String filename = "log_" + run_num + ".txt";
         OutputStream out = newOutputFile(filename);
-        Writer writer = new OutputStreamWriter(out);
+        log_writer = new OutputStreamWriter(out);
         try {
-            writer.write("Run " + run_num + " started on " + date + "\n");
-            writer.flush();
+            log_writer.write("Run " + run_num + " started on " + date + "\n");
+            log_writer.flush();
         } catch(IOException e){
             Log.e(TAG, e.getMessage());
-            throw new DriveException("Could not write to log file.");
         }
-        return out;
     }
 
-    public void closeLog() throws DriveException{
-        //nothing needed here for local storage...
+    public void appendLog(String msg) {
+        try {
+            log_writer.write(msg);
+            log_writer.flush();
+        } catch(IOException e){
+            Log.e(TAG, e.getMessage());
+        }
     }
 
-    public OutputStream newOutput(String suffix, String mime_type) throws DriveException {
-        SharedPreferences pref = App.getPref();
-        int run_num = pref.getInt("run_num", 0);
-
-        String filename = "run_" + run_num + "_" + suffix;
+    public OutputStream newOutput(String filename, String mime_type) {
         return newOutputFile(filename);
     }
 
-    public void closeOutput() throws DriveException{
+    public void closeOutput() {
         //nothing needed here for local storage...
     }
 
-    private OutputStream newOutputFile(String filename) throws DriveException {
+    private OutputStream newOutputFile(String filename) {
         File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                "FishStand");
+                work_dir);
         path.mkdirs();
 
         File outfile = new File(path, filename);
@@ -110,9 +115,7 @@ public class LocalDrive implements Storage {
             return bos;
         } catch (FileNotFoundException e){
             Log.e(TAG, e.getMessage());
-            throw new DriveException("Could not create new output file.");
         }
+        return null;
     }
-
-
 }

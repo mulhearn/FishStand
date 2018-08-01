@@ -6,22 +6,18 @@ import java.io.OutputStream;
 
 interface Storage {
 
-
-
-    class DriveException extends Exception {
-        public DriveException(String msg){
-            super(msg);
-        }
+    interface CallBack {
+        void reportStorageReady();  // called once, to report successful initialization
+        void reportStorageFailure(String msg);  // called upon any storage failure
     }
 
-    void Init() throws DriveException;
+    InputStream getConfig();
+    void closeConfig();
 
-    InputStream getConfig() throws DriveException;
+    void newLog(int run);
+    void appendLog(String str);
 
-    OutputStream newLog() throws DriveException;
-    void closeLog() throws DriveException;
-
-    OutputStream newOutput(String suffix, String mime_type) throws DriveException;
-    void closeOutput() throws DriveException;
+    OutputStream newOutput(String filename, String mime_type);
+    void closeOutput();
 
 }

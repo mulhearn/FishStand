@@ -25,6 +25,9 @@ public class MainActivity extends AppCompatActivity {
     // permissions request code:
     private static final int MY_PERMISSIONS_REQUEST = 100;
 
+    // Activity request code for use in intializing online storage:
+    private static final int AVAILABLE_REQUEST_CODE = 0;
+
     private BroadcastReceiver logUpdater;     // update log
     private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
     private BroadcastReceiver storageUpdater; // update file storage button based on storage type
@@ -100,12 +103,17 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 Button button = (Button) findViewById(R.id.button2);
                 TextView status = (TextView) findViewById(R.id.status2);
-                if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
-                    button.setText("Go online");
-                    status.setText("Using offline file storage.");
-                } else {
+                if (App.getStorageStatus() == App.StorageStatus.INITIALIZING){
                     button.setText("Go offline");
-                    status.setText("Using online file storage.");
+                    status.setText("Online storage is initializing...");
+                } else {
+                    if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
+                        button.setText("Go online");
+                        status.setText("Using offline file storage.");
+                    } else {
+                        button.setText("Go offline");
+                        status.setText("Using online file storage.");
+                    }
                 }
             }
         });
@@ -146,11 +154,18 @@ public class MainActivity extends AppCompatActivity {
         }
         if (v == findViewById(R.id.button2)) {
             if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
-                App.goOnline();
+                App.goOnline(this, AVAILABLE_REQUEST_CODE);
             } else {
                 App.goOffline();
             }
             return;
         }
     }
+
+    @Override
+    protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        GoogleDrive.handleOnActivityResult(requestCode, resultCode, data);
+    }
+
 }
