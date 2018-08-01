@@ -16,7 +16,7 @@ import android.util.Log;
 //
 
 
-public class App extends Application implements Runnable, Storage.CallBack {
+public class App extends Application implements Runnable {
     @SuppressLint("StaticFieldLeak")
     private static App instance;
 
@@ -39,57 +39,16 @@ public class App extends Application implements Runnable, Storage.CallBack {
         camera = null;
         handler = null;
 
-        goOffline();
+        storage = new LocalDrive("FishStand");
     }
     // The singleton application context:
     private Context context;
     static public Context getContext(){ return instance.context; }
 
-
-    // The storage interface, for Google Drive or local drive.
+    // The storage interface:  DEPRECATED!
     private Storage storage;
-    public static enum StorageType   {OFFLINE_STORAGE, ONLINE_STORAGE};
-    public static enum StorageStatus {INITIALIZING, READY}
-    StorageType storage_type;
-    StorageStatus storage_status;
-
-    public static StorageType getStorageType(){
-        return instance.storage_type;
-    }
-
-    public static StorageStatus getStorageStatus(){
-        return instance.storage_status;
-    }
-
     static Storage getStorage(){
         return instance.storage;
-    }
-
-    public static void goOffline(){
-        instance.storage_status = StorageStatus.INITIALIZING;
-        instance.storage_type = StorageType.OFFLINE_STORAGE;
-        instance.storage = new LocalDrive("FishStand");
-        instance.storage_status = StorageStatus.READY;
-        App.getMessage().updateStorage();
-    }
-
-    public static void goOnline(final Activity activity, final int availableRequestCode){
-        instance.storage_status = StorageStatus.INITIALIZING;
-        instance.storage_type = StorageType.ONLINE_STORAGE;
-        App.getMessage().updateStorage();
-        instance.storage = GoogleDrive.newGoogleDrive(activity, availableRequestCode, instance, "FishStand");
-    }
-
-    public void reportStorageReady(){
-        storage_status = StorageStatus.READY;
-        App.getMessage().updateStorage();
-    }
-
-    public void reportStorageFailure(String msg){
-        Log.e(TAG, "Storage Failure detected.  Halting DAQ and going offline.");
-        Log.e(TAG, "Message:  " + msg);
-        getMessage().forceStop();
-        goOffline();
     }
 
     private Message message;

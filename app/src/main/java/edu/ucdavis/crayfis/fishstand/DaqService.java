@@ -84,10 +84,6 @@ public class DaqService extends Service implements Runnable {
                 return START_STICKY;
             }
 
-            forceStop = App.getMessage().onForceStop(new Runnable() {
-                public void run() { externalStop(); }
-            });
-
             delay_applied = false;
             new Thread(this).start();
             showNotification();

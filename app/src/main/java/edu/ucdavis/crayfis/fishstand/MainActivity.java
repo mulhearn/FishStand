@@ -25,12 +25,8 @@ public class MainActivity extends AppCompatActivity {
     // permissions request code:
     private static final int MY_PERMISSIONS_REQUEST = 100;
 
-    // Activity request code for use in intializing online storage:
-    private static final int AVAILABLE_REQUEST_CODE = 0;
-
     private BroadcastReceiver logUpdater;     // update log
     private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
-    private BroadcastReceiver storageUpdater; // update file storage button based on storage type
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,27 +95,10 @@ public class MainActivity extends AppCompatActivity {
         });
         App.getMessage().updateState();
 
-        storageUpdater = App.getMessage().onStorageUpdate(new Runnable() {
-            public void run() {
-                Button button = (Button) findViewById(R.id.button2);
-                TextView status = (TextView) findViewById(R.id.status2);
-                if (App.getStorageStatus() == App.StorageStatus.INITIALIZING){
-                    button.setText("Go offline");
-                    status.setText("Online storage is initializing...");
-                } else {
-                    if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
-                        button.setText("Go online");
-                        status.setText("Using offline file storage.");
-                    } else {
-                        button.setText("Go offline");
-                        status.setText("Using online file storage.");
-                    }
-                }
-            }
-        });
-        App.getMessage().updateStorage();
-
-
+        Button button = (Button) findViewById(R.id.button2);
+        TextView status = (TextView) findViewById(R.id.status2);
+        button.setText("Read Config");
+        status.setText("unused status line...");
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
             public void run() {
@@ -135,7 +114,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         App.getMessage().unregister(stateUpdater);
-        App.getMessage().unregister(storageUpdater);
         App.getMessage().unregister(logUpdater);
     }
 
@@ -153,19 +131,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (v == findViewById(R.id.button2)) {
-            if (App.getStorageType() == App.StorageType.OFFLINE_STORAGE) {
-                App.goOnline(this, AVAILABLE_REQUEST_CODE);
-            } else {
-                App.goOffline();
-            }
-            return;
+            Toast toast = Toast.makeText(this, "Not yet implemented", Toast.LENGTH_SHORT);
+            toast.show();
         }
-    }
-
-    @Override
-    protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        GoogleDrive.handleOnActivityResult(requestCode, resultCode, data);
     }
 
 }

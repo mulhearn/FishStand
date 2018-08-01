@@ -6,11 +6,6 @@ import java.io.OutputStream;
 
 interface Storage {
 
-    interface CallBack {
-        void reportStorageReady();  // called once, to report successful initialization
-        void reportStorageFailure(String msg);  // called upon any storage failure
-    }
-
     InputStream getConfig();
     void closeConfig();
 

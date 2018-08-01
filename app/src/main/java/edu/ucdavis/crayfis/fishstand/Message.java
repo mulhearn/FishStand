@@ -25,20 +25,12 @@ public class Message {
     // these can be made as fine as possible, for now using fairly coarse categories:
     private static final String UPDATE_LOG       = "update-log";     // update a log file
     private static final String UPDATE_STATE     = "update-state";   // update a state of DAQ Service
-    private static final String UPDATE_STORAGE   = "update-storage"; // update file storage
-    private static final String FORCE_STOP       = "force-stop";     // force stop to DAQ
 
     void updateLog(){ send(UPDATE_LOG); }
     BroadcastReceiver onLogUpdate(Runnable r){ return onMessage(r, UPDATE_LOG); }
 
     void updateState(){ send(UPDATE_STATE); }
     BroadcastReceiver onStateUpdate(Runnable r){ return onMessage(r, UPDATE_STATE); }
-
-    void updateStorage(){ send(UPDATE_STORAGE); }
-    BroadcastReceiver onStorageUpdate(Runnable r){ return onMessage(r, UPDATE_STORAGE); }
-
-    void forceStop(){ send(FORCE_STOP); }
-    BroadcastReceiver onForceStop(Runnable r){ return onMessage(r, FORCE_STOP); }
 
     void unregister(BroadcastReceiver r) {
         LocalBroadcastManager.getInstance(context.getApplicationContext()).unregisterReceiver(r);
