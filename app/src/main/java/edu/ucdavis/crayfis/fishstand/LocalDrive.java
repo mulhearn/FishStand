@@ -1,6 +1,5 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.content.SharedPreferences;
 import android.os.Environment;
 import android.util.Log;
 

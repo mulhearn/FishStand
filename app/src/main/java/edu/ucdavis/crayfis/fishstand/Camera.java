@@ -20,7 +20,8 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.graphics.ImageFormat;
 import android.os.Handler;
-import android.os.Looper;
+import android.os.HandlerThread;
+import android.support.annotation.NonNull;
 import android.util.Range;
 import android.util.SizeF;
 import android.util.Size;
@@ -35,6 +36,8 @@ public class Camera {
     public CameraCharacteristics cchars;
     public CameraDevice cdevice;
     public CameraCaptureSession csession;
+    public HandlerThread cthread;
+    public Handler chandler;
     public ImageReader ireader;
     private Boolean init = false;
 
@@ -53,14 +56,23 @@ public class Camera {
 
 
     public void Init() {
-        Runnable r = new Runnable() {
+        cthread = new HandlerThread("Camera");
+        cthread.start();
+        chandler = new Handler(cthread.getLooper());
+        chandler.post(new Runnable() {
+            @Override
             public void run() {
                 init_stage1();
             }
-        };
-        App.getHandler().post(r);
+        });
         // should put a timeout here...
-        while(init == false){}
+        while(!init){
+            try {
+                Thread.sleep(100L);
+            } catch (InterruptedException e) {
+                // continue
+            }
+        }
     }
 
     //Due to asynchronous call back, init is broken into steps, with the callback from each step
@@ -182,10 +194,9 @@ public class Camera {
 
                 App.log().append("Camera settings initialized.\n");
 
-                cmanager.openCamera(cid, deviceCallback, App.getHandler());
+                cmanager.openCamera(cid, deviceCallback, chandler);
             } else {
                 App.log().append("Could not find camera device with sufficient capabilities.  Cannot init.");
-                return;
             }
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -217,16 +228,15 @@ public class Camera {
     void init_stage2() {
         //summary += "stage1 init success\n";
         // check camera open?  Or at least non-null?
-        App.log().append("camera is open.\n");
+        App.log().append("Creating capture session\n");
         ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
         List<Surface> outputs = new ArrayList<Surface>(1);
         outputs.add(ireader.getSurface());
         try {
-            cdevice.createCaptureSession(outputs, sessionCallback, App.getHandler());
+            cdevice.createCaptureSession(outputs, sessionCallback, chandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
-        return;
     }
 
     private final CameraCaptureSession.StateCallback sessionCallback = new CameraCaptureSession.StateCallback(){
@@ -247,16 +257,16 @@ public class Camera {
     void init_stage3(){
         //summary += "stage2 init success\n";
         //check capture session is available?
-        ireader.setOnImageAvailableListener(doNothingImageListener, App.getHandler());
+        ireader.setOnImageAvailableListener(doNothingImageListener, chandler);
 
         try {
-            final CaptureRequest.Builder captureBuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_MANUAL);
+            final CaptureRequest.Builder captureBuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureBuilder.addTarget(ireader.getSurface());
             captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, max_exp);
             captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, max_analog);
             captureBuilder.set(CaptureRequest.SENSOR_FRAME_DURATION, max_frame);
 
-            csession.capture(captureBuilder.build(), doNothingCaptureListener, App.getHandler());
+            csession.capture(captureBuilder.build(), doNothingCaptureListener, chandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -279,11 +289,11 @@ public class Camera {
 
     final CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
         @Override
-        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                       @NonNull CaptureRequest request,
+                                       @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            if (result != null) {
-                App.log().append("Non-null total capture results received.\n");
-            }
+            App.log().append("Non-null total capture results received.\n");
         }
     };
 

@@ -1,33 +1,12 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
-import android.os.Environment;
-import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
-import com.google.android.gms.drive.DriveContents;
-import com.google.android.gms.drive.DriveFile;
-import com.google.android.gms.drive.MetadataChangeSet;
-import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
-
-import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class PixelStats implements Analysis {
     public static final String TAG = "PixelStats";

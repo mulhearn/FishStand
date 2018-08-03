@@ -5,7 +5,6 @@ import android.graphics.Color;
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 
-import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
