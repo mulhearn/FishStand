@@ -1,10 +1,14 @@
 package edu.ucdavis.crayfis.fishstand;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Binder;
+import android.os.Build;
 import android.os.Environment;
+import android.support.v4.content.FileProvider;
 import android.util.Log;
 
 import java.io.BufferedOutputStream;
@@ -22,6 +26,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+
+import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 
 /**
  * Created by mulhearn on 7/31/18.
@@ -48,7 +54,7 @@ public class Config {
 
     int getInteger(String param, int def) {
         String str = getString(param, "");
-        if (str != ""){
+        if (!str.isEmpty()){
             return Integer.parseInt(str);
         }
         return def;
@@ -56,21 +62,29 @@ public class Config {
 
     boolean getBoolean(String param, boolean def) {
         String str = getString(param, "");
-        if (str != ""){
+        if (!str.isEmpty()){
             return Boolean.parseBoolean(str);
         }
         return def;
     }
 
-    void editConfig(Activity activity) {
-        Uri uri = Uri.fromFile(getFile());
-        //Uri uri = FileProvider.getUriForFile(App.getContext(), "edu.ucdavis.crayfis.fishstand.fileprovider", getFile());
+    void editConfig(Context context) {
         Intent intent = new Intent(Intent.ACTION_EDIT);
+        final Uri uri;
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            uri = FileProvider.getUriForFile(context,
+                    "edu.ucdavis.crayfis.fishstand.provider",
+                    getFile());
+        } else {
+            uri = Uri.fromFile(getFile());
+        }
+
         intent.setDataAndType(uri, "text/plain");
-        //intent.addFlags(FLAG_GRANT_WRITE_URI_PERMISSION);
-        PackageManager packageManager = activity.getPackageManager();
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+
+        PackageManager packageManager = context.getPackageManager();
         if (intent.resolveActivity(packageManager) != null) {
-            activity.startActivity(intent);
+            context.startActivity(intent);
         }
     }
 
@@ -78,19 +92,8 @@ public class Config {
         params = new ArrayList<String>();
         values = new ArrayList<String>();
 
-        File config_file = getFile();
-
-        if (! config_file.exists()) {
-            try {
-                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(config_file));
-                writeDefault(bos);
-            } catch (Exception e){
-                Log.e(TAG, e.getMessage());
-            }
-        }
-
         try {
-            InputStream input = new FileInputStream(config_file);
+            InputStream input = new FileInputStream(getFile());
             BufferedReader reader = new BufferedReader(new InputStreamReader(input));
             String line;
             while ((line = reader.readLine()) != null) {
@@ -131,8 +134,18 @@ public class Config {
                 Storage.WORK_DIR);
         path.mkdirs();
         final String filename = "config.txt";
-        return new File(path, filename);
+        File cfg_file = new File(path, filename);
+
+        if (! cfg_file.exists()) {
+            try {
+                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(cfg_file));
+                writeDefault(bos);
+            } catch (Exception e){
+                Log.e(TAG, e.getMessage());
+            }
+        }
+
+        return cfg_file;
     }
 
-
-    }
+}
