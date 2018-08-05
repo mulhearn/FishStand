@@ -3,9 +3,11 @@ package edu.ucdavis.crayfis.fishstand;
 import android.annotation.SuppressLint;
 import android.app.Application;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.support.v4.content.LocalBroadcastManager;
 
 //
 //  App:  Application wide access to singletons via static functions, e.g.:
@@ -76,6 +78,26 @@ public class App extends Application implements Runnable {
             instance.config = new Config();
         }
         return instance.config;
+    }
+
+    // State of the DAQ:
+    public enum STATE {
+        RUNNING,   // A run is underway
+        STOPPING,  // A run stop has been requested, but worker threads may not have finishd yet
+        READY;     // Ready for a new run.
+    }
+
+    public static final String ACTION_STATE_CHANGE = "state_change";
+    public static final String EXTRA_NEW_STATE = "new_state";
+    private STATE state = STATE.READY;
+    public static STATE getAppState() {
+        return instance.state;
+    }
+    public static synchronized void updateState(STATE new_state) {
+        instance.state = new_state;
+        Intent intent = new Intent(ACTION_STATE_CHANGE);
+        intent.putExtra(EXTRA_NEW_STATE, new_state);
+        LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
     }
 
     public void run(){

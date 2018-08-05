@@ -2,10 +2,13 @@ package edu.ucdavis.crayfis.fishstand;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.os.IBinder;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -34,9 +37,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         if (!App.getPref().contains("run_num")) {
-            SharedPreferences.Editor editor = App.getPref().edit();
-            editor.putInt("run_num", 0);
-            editor.commit();
+            App.getPref().edit()
+                    .putInt("run_num", 0)
+                    .apply();
         }
 
         // check and request missing permissions
@@ -76,7 +79,7 @@ public class MainActivity extends AppCompatActivity {
         stateUpdater = App.getMessage().onStateUpdate(new Runnable() {
             public void run() {
                 Button button = (Button) findViewById(R.id.button1);
-                if (DaqService.state == DaqService.STATE.READY) {
+                if (App.getAppState() == App.STATE.READY) {
                     button.setText("Start DAQ");
                 } else {
                     button.setText("Stop DAQ");
@@ -84,9 +87,9 @@ public class MainActivity extends AppCompatActivity {
                 TextView status = (TextView) findViewById(R.id.status1);
                 SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
                 int run_num = pref.getInt("run_num", 1);
-                if (DaqService.state == DaqService.STATE.RUNNING) {
+                if (App.getAppState() == App.STATE.RUNNING) {
                     status.setText("run " + run_num + " running");
-                } else if (DaqService.state == DaqService.STATE.READY) {
+                } else if (App.getAppState() == App.STATE.READY) {
                     status.setText("run " + run_num + " ready");
                 } else {
                     status.setText("run " + run_num + " stopping...");
@@ -109,7 +112,6 @@ public class MainActivity extends AppCompatActivity {
         App.getMessage().updateLog();
     }
 
-
     @Override
     protected void onStop() {
         super.onStop();
@@ -120,15 +122,13 @@ public class MainActivity extends AppCompatActivity {
     public void buttonClicked(View v) {
         if (v == findViewById(R.id.button1)) {
             Intent service = new Intent(MainActivity.this, DaqService.class);
-            if (DaqService.state == DaqService.STATE.READY) {
+            if (App.getAppState() == App.STATE.READY) {
                 Log.i(TAG, "button starting foreground action...");
-                service.setAction(DaqService.ACTION.STARTFOREGROUND_ACTION);
+                startService(service);
             } else {
                 Log.i(TAG, "button stopping foreground action...");
-                service.setAction(DaqService.ACTION.STOPFOREGROUND_ACTION);
+                stopService(service);
             }
-            startService(service);
-            return;
         }
         if (v == findViewById(R.id.button2)) {
             App.getConfig().editConfig(this);

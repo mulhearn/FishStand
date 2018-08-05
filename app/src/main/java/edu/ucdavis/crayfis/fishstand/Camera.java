@@ -115,12 +115,13 @@ public class Camera {
                 summary += "\n";
                 summary += "RAW mode support:  " + raw_mode + "\n";
                 summary += "Manual mode support:  " + manual_mode + "\n";
-                if ((cid == "") && (facing == 1) && raw_mode && manual_mode) {
+                if ((cid.isEmpty()) && (facing == 1) && raw_mode && manual_mode) {
                     cid = id;
+                    break;
                 }
                 App.log().append(summary);
             }
-            if (cid != "") {
+            if (!cid.isEmpty()) {
                 String summary = "";
                 summary += "selected camera ID " + cid + "\n";
                 cchars = cmanager.getCameraCharacteristics(cid);
@@ -198,7 +199,7 @@ public class Camera {
             } else {
                 App.log().append("Could not find camera device with sufficient capabilities.  Cannot init.");
             }
-        } catch (CameraAccessException e) {
+        } catch (CameraAccessException |SecurityException e) {
             e.printStackTrace();
         }
     }
@@ -240,21 +241,20 @@ public class Camera {
     }
 
     private final CameraCaptureSession.StateCallback sessionCallback = new CameraCaptureSession.StateCallback(){
-        @Override public void	onActive(CameraCaptureSession session){DaqService.onActive(session);}
-        @Override public void	onClosed(CameraCaptureSession session){DaqService.onClosed(session);}
-        @Override public void	onConfigureFailed(CameraCaptureSession session){DaqService.onConfigureFailed(session);}
-        @Override public void	onConfigured(CameraCaptureSession session){
+        @Override
+        public void	onConfigured(@NonNull CameraCaptureSession session){
             App.log().append("Camera capture session configured.\n");
             csession = session;
             init_stage3();
         }
-        @Override public void	onReady(CameraCaptureSession session){DaqService.onReady(session);}
-        @Override public void	onSurfacePrepared(CameraCaptureSession session, Surface surface){
-            DaqService.onSurfacePrepared(session,surface);
+
+        @Override
+        public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+
         }
     };
 
-    void init_stage3(){
+    private void init_stage3(){
         //summary += "stage2 init success\n";
         //check capture session is available?
         ireader.setOnImageAvailableListener(doNothingImageListener, chandler);
@@ -272,7 +272,7 @@ public class Camera {
         }
     }
 
-    ImageReader.OnImageAvailableListener doNothingImageListener = new ImageReader.OnImageAvailableListener() {
+    private ImageReader.OnImageAvailableListener doNothingImageListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader reader) {
             Image img = reader.acquireLatestImage();
@@ -287,7 +287,7 @@ public class Camera {
         }
     };
 
-    final CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
+    private final CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                        @NonNull CaptureRequest request,
@@ -297,7 +297,7 @@ public class Camera {
         }
     };
 
-    void init_stage4(){
+    private void init_stage4(){
         App.log().append("camera initialization has succeeded.\n");
         init = true;
     }
