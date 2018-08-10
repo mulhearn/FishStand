@@ -18,6 +18,7 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.AsyncTask;
+import android.os.BatteryManager;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
@@ -28,6 +29,8 @@ import android.os.IBinder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -35,6 +38,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 
 public class DaqService extends Service {
+
+    private static final float MIN_BATTERY_PCT = .3f;
+    private static final float RESTART_BATTERY_PCT = .9f;
+    private static final long BATTERY_CHECK_TIME = 600000L;
+
     Analysis analysis;
 
     private LocalBroadcastManager broadcast_manager;
@@ -220,11 +228,42 @@ public class DaqService extends Service {
                 .putInt("run_num", run_num)
                 .commit();
 
-        if (repeat){
-            App.updateState(App.STATE.RUNNING);
-        } else {
-            App.updateState(App.STATE.READY);
+        if (repeat) {
+            if(checkBatteryPct(MIN_BATTERY_PCT)) {
+                App.updateState(App.STATE.RUNNING);
+                return;
+            }
+
+            // periodically check to see if we have enough charge to start a new run
+            Timer idleTimer = new Timer();
+            TimerTask idleTimerTask = new TimerTask() {
+                @Override
+                public void run() {
+                    if(checkBatteryPct(RESTART_BATTERY_PCT)) {
+                        this.cancel();
+                        App.updateState(App.STATE.RUNNING);
+                    }
+                }
+            };
+            // we should resume immediately if we have charge, so no delay
+            idleTimer.scheduleAtFixedRate(idleTimerTask, 0, BATTERY_CHECK_TIME);
         }
+
+        App.updateState(App.STATE.READY);
+
+    }
+
+    private boolean checkBatteryPct(float thresh) {
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = registerReceiver(null, ifilter);
+
+        // get battery updates
+        if(batteryStatus == null) return true; // if this fails for whatever reason, just keep going
+
+        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+        float batteryPct = level / (float) scale;
+        return batteryPct > thresh;
     }
 
 
