@@ -47,8 +47,6 @@ public class Camera {
     public Size raw_size;
     public long min_exp=0;
     public long max_exp=0;
-    public long min_frame=0;
-    public long max_frame=0;
     public int min_sens=0;
     public int max_sens=0;
     public int max_analog=0;
@@ -89,8 +87,8 @@ public class Camera {
         cmanager = (CameraManager) App.getContext().getSystemService(Context.CAMERA_SERVICE);
         try {
             cid = "";
+            String summary = "";
             for (String id : cmanager.getCameraIdList()) {
-                String summary = "";
                 summary += "camera id string:  " + id + "\n";
                 CameraCharacteristics chars = cmanager.getCameraCharacteristics(id);
                 // Does the camera have a forwards facing lens?
@@ -119,10 +117,10 @@ public class Camera {
                     cid = id;
                     break;
                 }
-                App.log().append(summary);
             }
+            App.log().append(summary);
             if (!cid.isEmpty()) {
-                String summary = "";
+                summary = "";
                 summary += "selected camera ID " + cid + "\n";
                 cchars = cmanager.getCameraCharacteristics(cid);
                 Size isize = cchars.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
@@ -168,10 +166,6 @@ public class Camera {
                 }
                 summary += "\n";
 
-                min_frame = configs.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR,raw_size);
-                max_frame = cchars.get(CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION);
-                summary += "Frame length:  " + min_frame*1E-6 + " to " + max_frame*1E-6 + " ms\n";
-
                 Range<Long> rexp = cchars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
                 min_exp = rexp.getLower();
                 max_exp = rexp.getUpper();
@@ -216,11 +210,11 @@ public class Camera {
             init_stage2();
         }
         @Override
-        public void onDisconnected(CameraDevice camera) {
+        public void onDisconnected(@NonNull CameraDevice camera) {
             cdevice.close();
         }
         @Override
-        public void onError(CameraDevice camera, int error) {
+        public void onError(@NonNull CameraDevice camera, int error) {
             cdevice.close();
             cdevice = null;
         }
@@ -230,7 +224,13 @@ public class Camera {
         //summary += "stage1 init success\n";
         // check camera open?  Or at least non-null?
         App.log().append("Creating capture session\n");
-        ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
+        if(App.getConfig().getBoolean("yuv", false)) {
+            App.log().append("Using YUV.\n");
+            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.YUV_420_888, max_images);
+        } else {
+            App.log().append("Using RAW.\n");
+            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
+        }
         List<Surface> outputs = new ArrayList<Surface>(1);
         outputs.add(ireader.getSurface());
         try {
@@ -264,7 +264,6 @@ public class Camera {
             captureBuilder.addTarget(ireader.getSurface());
             captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, max_exp);
             captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, max_analog);
-            captureBuilder.set(CaptureRequest.SENSOR_FRAME_DURATION, max_frame);
 
             csession.capture(captureBuilder.build(), doNothingCaptureListener, chandler);
         } catch (CameraAccessException e) {

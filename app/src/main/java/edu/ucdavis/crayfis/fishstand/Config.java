@@ -122,6 +122,7 @@ public class Config {
             writer.write("repeat false\n");
             writer.write("analysis none\n");
             writer.write("delay 0\n");
+            writer.write("yuv false\n");
             writer.flush();
         } catch (Exception e){
             Log.e(TAG, e.getMessage());

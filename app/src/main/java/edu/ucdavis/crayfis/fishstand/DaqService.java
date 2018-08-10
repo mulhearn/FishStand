@@ -58,7 +58,6 @@ public class DaqService extends Service {
     };
 
     private AtomicInteger requests, events;
-    private long run_start, run_end;
 
     private String job_tag;
     private int num;
@@ -138,6 +137,8 @@ public class DaqService extends Service {
         int run_num = App.getPref().getInt("run_num", 0);
         App.log().newRun(run_num);
 
+        Init();
+
         App.log().append("starting run " + run_num + "\n");
 
         if (App.getCamera().ireader == null) {
@@ -152,8 +153,6 @@ public class DaqService extends Service {
             img.close();
         }
 
-        Init();
-
         App.log().append("Finished initialization.\n");
 
         if ((!delay_applied) && (delay > 0)) {
@@ -165,10 +164,12 @@ public class DaqService extends Service {
         try {
             final CaptureRequest.Builder captureBuilder = App.getCamera().cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureBuilder.addTarget(App.getCamera().ireader.getSurface());
-            captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, App.getCamera().max_exp);
+            captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, Math.min(App.getCamera().max_exp, 1000000000L));
             captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, App.getCamera().max_analog);
-            captureBuilder.set(CaptureRequest.SENSOR_FRAME_DURATION, App.getCamera().max_frame);
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
             captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
+            captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
             captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
             captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
             captureBuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
@@ -241,10 +242,11 @@ public class DaqService extends Service {
                 return;
             }
 
-            if (requests.incrementAndGet() == num) {
+            int current_requests = requests.incrementAndGet();
+            if (current_requests == num) {
                 img.close();
                 App.updateState(App.STATE.STOPPING);
-            } else {
+            } else if(current_requests < num) {
                 try {
                     AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
                         @Override
@@ -291,12 +293,12 @@ public class DaqService extends Service {
 
     public void Init() {
         App.log().append("init called.\n");
+        App.getConfig().parseConfig();
+        App.getConfig().logConfig();
+
         App.getCamera().ireader.setOnImageAvailableListener(daqImageListener, App.getHandler());
         requests = new AtomicInteger();
         events = new AtomicInteger();
-
-        App.getConfig().parseConfig();
-        App.getConfig().logConfig();
 
         job_tag = App.getConfig().getString("tag", "unspecified");
         num     = App.getConfig().getInteger("num", 1);
@@ -334,9 +336,10 @@ public class DaqService extends Service {
             super.onCaptureCompleted(session, request, result);
 
             long exp = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            long dur = result.get(CaptureResult.SENSOR_FRAME_DURATION);
             long iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-            if (events.intValue() < 10) {
-                App.log().append("capture complete with exposure " + exp + " sensitivity " + iso + "\n");
+            if (verbose_event(events.intValue())) {
+                App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
             }
         }
     };
