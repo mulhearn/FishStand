@@ -3,126 +3,215 @@
 import sys
 from unpack import *
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 
-def process(filename):
+import argparse
+
+def process(filename, args):
     # plots to show:
-    meanvar = False
-    mvzoom  = False
+    meanvar = True
+    mvzoom  = True
     hmean   = True
     hvari  = True
 
-    # danger hard-coded values:
-    iso    = 600
-    width  = 5328
-    height = 3000
+    # load data, from either raw file directly from phone, or as output from combine.py utility:
 
-    dat = np.load(filename);
-    print dat.shape    
-    num = dat[2]
+    if (args.raw):
+         version,header,sum,ssq = unpack_all(filename)
+         index = get_pixel_indices(header)
+         images = interpret_header(header, "images")
+         num = np.full(index.size, images)
+         width  = interpret_header(header, "width")
+         height = interpret_header(header, "height")
+    else:
+        # load the image geometry from the calibrations:
+        try:
+            geom = np.load("calib/geometry.npz");
+        except:
+            print "calib/geometry.npz does not exist.  Use dump_header.py --geometry"
+            return
+        width  = geom["width"]
+        height = geom["height"]
 
-    # check the sizes agree:
-    calc_size = width*height
-    print "data size:  ", num.size
-    print "calc size:  ", calc_size
-    if (num.size != calc_size):
-        return
+        try:
+            npz = np.load(filename)
+        except:
+            print "could not process file ", filename, " as .npz file.  Use --raw option?"
+            return
 
-    # load the dark pixel mask:
-    all_dark = np.load("calib/all_dark.npy")
-    print "dark map size:  ", all_dark.size
-    if (all_dark.size != calc_size):
-        return
-
-    empty = (dat[2] == 0)
-    dat[2][empty]=1
-    cmean = dat[0] / dat[2]
-    cvari = dat[1] / dat[2] - cmean**2
-
-    cmean = cmean[(all_dark == False)]
-    cvari = cvari[(all_dark == False)]
-
-    x = np.random.random(cmean.size)
-    sup  = (x < 0.001)
-
-
-    if (meanvar):
-        plt.plot(cmean[sup],cvari[sup],".",color="black",label="normal pixels (1%)")
-        plt.ylim(0,200)    
-        plt.xlim(0,50)   
-
-        plt.xlabel("mean")
-        plt.ylabel("variance")
-        plt.savefig("meanvar.png")
-        plt.show()
-
-
-    if (mvzoom):
-        plt.plot(cmean[sup],cvari[sup],".",color="black",label="normal pixels (1%)")
-        plt.ylim(0,20)    
-        plt.xlim(0,4)   
-
-        plt.xlabel("mean")
-        plt.ylabel("variance")
-        plt.savefig("mvzoom.png")
-        plt.show()
-
-    if (hmean):
-        h,bins = np.histogram(np.clip(cmean,0,10), bins=100, range=(0,10))
-        err = h**0.5
-        cbins = 0.5*(bins[:-1] + bins[1:])
-        plt.errorbar(cbins,h,yerr=err,color="black",fmt="o")
-        plt.ylim(1.0,1E7)
-        plt.ylabel("pixels")
-        plt.xlabel("mean")
-        plt.yscale('log')
-        plt.savefig("hmean.pdf")
-        plt.show()
-
-    if (hvari):
-        h,bins = np.histogram(np.clip(cvari,0,100), bins=100, range=(0,100))
-        err = h**0.5
-        cbins = 0.5*(bins[:-1] + bins[1:])
-        plt.errorbar(cbins,h,yerr=err,color="black",fmt="o")
-        plt.ylim(1.0,1E7)
-        plt.ylabel("pixels")
-        plt.xlabel("variance")
-        plt.yscale('log')
-        plt.savefig("hvari.pdf")
-        plt.show()
-
+        exposure = npz['exposure']
+        sens     = npz['sens']
+        sum      = npz['sum']
+        ssq      = npz['ssq']
+        num     = npz['num']
+        index = np.arange(num.size)
 
     
-    #plt.close()
-    #h,bins = np.histogram(np.clip(var,0,100), bins=100, range=(0,100))
-    #err = h**0.5
-    #cbins = 0.5*(bins[:-1] + bins[1:])
-    #plt.errorbar(cbins,h,yerr=err,color="black",fmt="o")
-    #plt.ylim(1.0,1E5)
-    #plt.xlim(0.0,100.0)
-    #plt.ylabel("pixels")
-    #plt.xlabel("variance")
-    #plt.yscale('log')
-    #plt.text(90.0, 12000.0,iso_tag, horizontalalignment='right',color="black", fontsize=18)
-    #plt.text(9.0, 11000.0,exp_tag, horizontalalignment='right',color="black", fontsize=18)
-    #plt.text(90.0, 6000.0,exp_tag, horizontalalignment='right',color="black", fontsize=18)
-    #outfile = "var" + name_tag + ".png"
-    #plt.savefig(outfile)
-    #plt.show()
+    empty = (num == 0)
+    num[empty]=1
+    cmean = sum / num
+    cvari = ssq / num - cmean**2
 
-    dx    = mapx[dark]
-    dy    = mapy[dark]
+    xpos = index % width
+    ypos = index / width
 
 
+    keep = np.full(num.size, True, dtype=bool)
 
+    if (args.no_dark or args.all_dark):
+        try:
+            all_dark = np.load("calib/all_dark.npy")            
+        except:
+            print "dark pixel file calib/all_dark.npy does not exist."
+            return
+        print index[:10]
+        print all_dark[0]
+        print all_dark[1]
+
+        new_dark = [all_dark[i] for i in index]
+        print new_dark[:10]
+        print len(new_dark)
+        print num.size
+
+        all_dark = np.array(new_dark)
+        
+        if (args.no_dark):
+            keep = keep * (all_dark == False)
+        if (args.all_dark):
+            keep = keep * (all_dark == True)
+
+    if (args.filter >= 0):
+        if (args.filter == 0):
+            keep = keep * ((xpos%2)==0) * ((ypos%2)==0)
+        if (args.filter == 1):
+            keep = keep * ((xpos%2)==1) * ((ypos%2)==0)
+        if (args.filter == 2):
+            keep = keep * ((xpos%2)==0) * ((ypos%2)==1)
+        if (args.filter == 3):
+            keep = keep * ((xpos%2)==1) * ((ypos%2)==1)
+
+    cmean = cmean[keep]
+    cvari = cvari[keep]
+    index = index[keep]
+    xpos  = xpos[keep]
+    ypos  = ypos[keep]
+
+    if (args.sandbox):
+        print "running development code."
+        return
+
+    if (not args.skip_default):
+        plt.hist2d(cmean,cvari,norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")
+        plt.savefig("plots/mean_var.pdf")
+        plt.show()
+
+
+    if (args.by_filter):
+        posA = ((xpos%2)==0) * ((ypos%2)==0)
+        posB = ((xpos%2)==1) * ((ypos%2)==0)
+        posC = ((xpos%2)==0) * ((ypos%2)==1)
+        posD = ((xpos%2)==1) * ((ypos%2)==1)
+
+        plt.subplot(2,2,1)
+        plt.hist2d(cmean[posA],cvari[posA],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,2)
+        plt.hist2d(cmean[posB],cvari[posB],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,3)
+        plt.hist2d(cmean[posC],cvari[posC],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,4)
+        plt.hist2d(cmean[posD],cvari[posD],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.show()
+
+    rs     = ((xpos - width/2.0)**2 + (ypos - height/2.0)**2)
+    norm   = (width/2.0)**2 + (height/2.0)**2
+    rs     = rs/norm
+
+    if (args.by_radius):
+        posA = (rs >= 0.75)
+        posB = (rs < 0.75) * (rs >= 0.5) 
+        posC = (rs < 0.5) * (rs >= 0.25) 
+        posD = (rs < 0.25) 
+
+        plt.subplot(2,2,1)
+        plt.hist2d(cmean[posA],cvari[posA],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,2)
+        plt.hist2d(cmean[posB],cvari[posB],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,3)
+        plt.hist2d(cmean[posC],cvari[posC],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.subplot(2,2,4)
+        plt.hist2d(cmean[posD],cvari[posD],norm=LogNorm(),bins=[500,500],range=[[0,args.max_mean],[0,args.max_var]])
+        plt.xlabel("mean")
+        plt.ylabel("variance")    
+        plt.show()
+
+
+    return
+
+    h,bins = np.histogram(np.clip(cmean,0,10), bins=100, range=(0,10))
+    err = h**0.5
+    cbins = 0.5*(bins[:-1] + bins[1:])
+    plt.errorbar(cbins,h,yerr=err,color="black",fmt="o")
+    plt.ylim(1.0,1E7)
+    plt.ylabel("pixels")
+    plt.xlabel("mean")
+    plt.yscale('log')
+    plt.savefig("hmean.pdf")
+    plt.show()
+    
+    
+    h,bins = np.histogram(np.clip(cvari,0,100), bins=100, range=(0,100))
+    err = h**0.5
+    cbins = 0.5*(bins[:-1] + bins[1:])
+    plt.errorbar(cbins,h,yerr=err,color="black",fmt="o")
+    plt.ylim(1.0,1E7)
+    plt.ylabel("pixels")
+    plt.xlabel("variance")
+    plt.yscale('log')
+    plt.savefig("hvari.pdf")
+    plt.show()
 
 
     
 if __name__ == "__main__":
-    import sys
-    if (len(sys.argv) != 2):
-        sys.exit(0)
+    example_text = '''examples:
 
-    filename = str(sys.argv[1])
-    print "processing file:  ", filename
-    process(filename)
+    ./show_mean_var.py ./data/combined/small_dark.npz --max_var=30 --max_mean=5'''
+    
+    parser = argparse.ArgumentParser(description='Plot mean and variance.', epilog=example_text,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('files', metavar='FILE', nargs='+', help='file to process')
+    parser.add_argument('--skip_default',action="store_true", help="skip the default plot or plots.")
+    parser.add_argument('--sandbox',action="store_true", help="run sandbox code and exit (for development).")
+    parser.add_argument('--raw',action="store_true", help="input files have not been preprocessed.")
+    parser.add_argument('--max_var',  type=float, default=800,help="input files have not been preprocessed.")
+    parser.add_argument('--max_mean', type=float, default=200,help="input files have not been preprocessed.")
+    parser.add_argument('--no_dark',action="store_true", help="drop dark pixels from all plots.")
+    parser.add_argument('--filter', metavar='POS', type=int, default=-1,help="only include pixels at filter position POS.")
+    parser.add_argument('--all_dark',action="store_true", help="drop non-dark pixels from all plots.")
+    parser.add_argument('--by_filter',action="store_true", help="produce 4 plots for each corner of the 2x2 filter arrangement.")
+    parser.add_argument('--by_radius',action="store_true", help="produce 4 plots at three different locations from radius.")
+    args = parser.parse_args()
+
+    for filename in args.files:
+        print "processing file:  ", filename
+        process(filename, args)
+
+
+
 

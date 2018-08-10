@@ -4,33 +4,47 @@ import sys
 from unpack import *
 import matplotlib.pyplot as plt
 
+def analysis():
+    # danger hard-coded values:
+    width  = 5328
+    height = 3000
 
+    gain_fit = np.load("calib/gain.npz");
+    gain = gain_fit["gain"]
 
+    dark = np.load("calib/all_dark.npy");
 
-def process(filename):
-    global means, vars, offset, chans
+    if (gain.size != width*height):
+        print "inconsistent number of pixels in gain results."
+        exit(0)
 
-    hsize,version,images,width,height,sens,exposure,num_files,ifile,offset,step_pixels,num_pixels,pixel_start,pixel_end=unpack_header(filename)
-    
-    index = np.arange(pixel_start, pixel_end) * step_pixels + offset
+    if (dark.size != width*height):
+        print "inconsistent number of pixels in dark pixel results."
+        exit(0)
+
+    index = np.arange(0,width*height)
     xpos = index % width
     ypos = index / width
-    r = (xpos-width/2)**2 + (ypos-height/2)**2
-    r = r / float(width**2 + height**2)
-    r = 2*np.sqrt(r)
+
+    # drop dark pixels:
+    keep = (dark == False)
+    gain = gain[keep]
+    xpos = xpos[keep]
+    ypos = ypos[keep]
     
+    # now restrict to just non-empty pixels:
+    keep = np.nonzero(gain)[0]
+    gain = gain[keep]
+    xpos = xpos[keep]
+    ypos = ypos[keep]
 
-    mean,var = calc_mean_var(filename)    
-    gain = var / mean
+    # with finite values:
+    keep = np.isfinite(gain)
+    gain = gain[keep]
+    xpos = xpos[keep]
+    ypos = ypos[keep]
 
-
-    #good = (mean<3) & (var<15)
-    #gain = gain[good]
-    #xpos = xpos[good]
-    #ypos = ypos[good]
-
-
-    bins = 100
+    bins = 500
     
     G  = np.zeros(bins*bins)
     S  = np.zeros(bins*bins)
@@ -41,30 +55,20 @@ def process(filename):
         ic = xc + yc*bins
         G[ic] += gc
         S[ic] += 1.0
-    G = G/S
-    
+    nz = np.nonzero(G)[0]
 
+    G[nz] = G[nz]/S[nz]
+    
     G = G.reshape((bins,bins))
     print G
-    plt.imshow(G, vmin=4, vmax=7)
+    plt.imshow(G, vmin=2, vmax=5)
     plt.colorbar()
-    plt.savefig("shading.png")
+    plt.savefig("plots/shading.png")
     plt.show()
-
-
-    #plt.pcolormesh(XC, YC, G)
-    #plt.plot(r, gain,".")
-    #plt.ylim(0,20)
-    #plt.xlim(-0.2,1.2)
-    #plt.show()
-
    
    
 if __name__ == "__main__":
 
-    for i in range(1,len(sys.argv)):
-        filename = str(sys.argv[i])
-        print "processing file:  ", filename
-        process(filename)
+    analysis()
 
 

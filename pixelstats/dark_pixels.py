@@ -3,131 +3,180 @@
 import sys
 from unpack import *
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 
-def process(filename):
+import argparse
+
+def process(filename, args):
     # plots to show:
     meanvar = True
     border  = True
     pattern = True
     alldark = True
 
-    # danger hard-coded values:
-    iso    = 600
-    width  = 5328
-    height = 3000
+    # load the image geometry from the calibrations:
+    try:
+        geom = np.load("calib/geometry.npz");
+    except:
+        print "calib/geometry.npz does not exist.  Use dump_header.py --geometry"
+        return
+    width  = geom["width"]
+    height = geom["height"]
 
-    # from inspection:
-    dark_period = 64
-    dark_minx   = 44
-    dark_miny   = 32
-    dark_maxx   = 5280 
-    dark_maxy   = 2965 
-
-    # the 2d positions of each pixel:
-    mapx = np.arange(width*height) % width
-    mapy = np.arange(width*height) / width
-    
-    dat = np.load(filename);
-    print dat.shape    
-    num = dat[2]
-
-    # check the sizes agree:
-    calc_size = width*height
-    print "data size:  ", num.size
-    print "calc size:  ", calc_size
-    if (num.size != calc_size):
+    print "processing file:  ", filename
+    try:
+        npz = np.load(filename)
+    except:
+        print "could not process file ", filename, " as .npz file.  Use --raw option?"
         return
 
-    empty = (dat[2] == 0)
-    dat[2][empty]=1
-    cmean = dat[0] / dat[2]
-    cvari = dat[1] / dat[2] - cmean**2
+    exposure = npz['exposure']
+    sens     = npz['sens']
+    sum      = npz['sum']
+    ssq      = npz['ssq']
+    num     = npz['num']
+    index = np.arange(num.size)
 
-    A = -0.2
-    B = 0.9*iso/200.0  
-    dark = (cmean < 3) & (cvari < (A + B*cmean))
+    empty = (num == 0)
+    num[empty]=1
+    mean = sum / num
+    vari  = ssq / num - mean**2
 
-    x = np.random.random(cmean.size)
-    sup  = (dark == False) & (x < 0.001)
+    max_mean = 3*np.mean(mean)
+    max_vari = 3*np.mean(vari)
+    nom_slope = max_vari / max_mean;
 
-    a = np.array([0,3])
-    b = A + B*a
+    A = nom_slope * args.slope
+    B = max_mean * args.offset
+    
+    xcut = np.array([0,max_mean])
+    ycut = A*(xcut-B)
 
-    if (meanvar):
-        plt.plot(cmean[sup],cvari[sup],".",color="black",label="normal pixels (1%)")
-        plt.plot(cmean[dark],cvari[dark],".",color="blue",label="dark pixels")
-        plt.plot(a,b,"--", color="red",label="id cut")
-
-        plt.ylim(0,20)    
-        plt.xlim(0,4)   
-
+    if (not args.skip_prelim):
+        plt.hist2d(mean,vari,norm=LogNorm(),bins=[100,100],range=[[0,max_mean],[0,max_vari]])
+        plt.plot(xcut,ycut,"-")
         plt.xlabel("mean")
         plt.ylabel("variance")
-        plt.legend(numpoints=1,loc=0,frameon=False)
-        plt.savefig("meanvar.png")
+        plt.savefig("plots/dark_cut.pdf")
         plt.show()
 
-    dx    = mapx[dark]
-    dy    = mapy[dark]
-
-    if (border):
-        plt.plot(dx,dy,".", color="blue")
-        plt.xlabel("x position")
-        plt.ylabel("y position")
-        plt.ylim(2900,3000)    
-        plt.xlim(5228,5328)   
+    dark = (mean < max_mean) & (vari < max_vari) & (vari < (A*(mean - B)))
+                                
+    if (not args.skip_prelim):                  
+        plt.hist2d(mean[dark],vari[dark],norm=LogNorm(),bins=[100,100],range=[[0,max_mean],[0,max_vari]])
+        plt.plot(xcut,ycut,"-")
+        plt.xlabel("mean")
+        plt.ylabel("variance")
+        plt.savefig("plots/dark_cut_applied.pdf")
         plt.show()
-    print "x min:  ", np.min(dx)
-    print "x max:  ", np.max(dx)
-    print "y min:  ", np.min(dy)
-    print "y max:  ", np.max(dy)
 
-    px   = dx % dark_period
-    py   = dy % dark_period
-    flat = px*dark_period + py
+    xpos = index % width
+    ypos = index / width
+
+    darkx = xpos[dark]
+    darky = ypos[dark]
+
+    xmin = np.min(darkx)
+    xmax = np.max(darkx)
+    ymin = np.min(darky)
+    ymax = np.max(darky)
+
+    print "minimum dark x value:  ", xmin
+    print "maximum dark x value:  ", xmax
+    print "minimum dark y value:  ", ymin
+    print "maximum dark y value:  ", ymax
+   
+    best   = 500*500
+    best_i = args.period[0]
+    best_j = args.period[1]
+
+    print "Scanning for the dark pixel period.  This might take awhile:   use --period if you know it."
+
+    if (best_i == 0):
+        for i in range(1,100):
+            for j in range(1,100):
+                if ((i%10)|(j%10)==0):
+                    print "checking period x: ", i, " y: ", j                
+                cx = darkx % i
+                cy = darky % j
+                flat = cy*i + cx
+                flat = np.unique(flat)
+                occ = (flat.size)/float(i*j)            
+                if (occ < best):
+                    best = occ
+                    best_i = i
+                    best_j = j
+
+    print "dark pixel pattern has period (x): ", best_i, " (y) ", best_j, "\n";
+
+    cx = darkx % best_i
+    cy = darky % best_j
+    flat = cy*best_i + cx
     flat = np.unique(flat)
-    flat = np.sort(flat)
-    ux = flat/dark_period
-    uy = flat%dark_period
-    uxy = np.column_stack((ux,uy))
-    print uxy
-
-    if (pattern):
-        plt.plot(ux,uy,".", color="blue")
-        plt.xlabel("x position mod 64")
-        plt.ylabel("y position mod 64")
-        plt.savefig("pattern.pdf")
-        plt.show()
-
+    ux = flat % best_i
+    uy = flat / best_i
     
-    mapf = (mapx%dark_period)*dark_period + mapy%dark_period
-    all_dark = np.in1d(mapf, flat)
+    plt.plot(ux,uy,".", color="blue")
+    plt.xlabel("x position")
+    plt.ylabel("y position")
+    plt.savefig("plots/dark_pattern.pdf")
+    plt.show()
+
+    # now build the entire dark pixel map:
+    full  = np.arange(width*height)
+    fullx = full % width
+    fully = full / width
+    mapf = fullx%best_i + (fully%best_j)*best_i
+    all_dark = np.in1d(mapf,flat)
+    # future python:
+    #all_dark = np.isin(mapf,flat)
+
     # remove borders:
-    all_dark = all_dark & (mapx>=dark_minx) & (mapy>=dark_miny) & (mapx<=dark_maxx) & (mapy<=dark_maxy)
+    all_dark = all_dark & (fullx>=xmin) & (fully>=ymin) & (fullx<=xmax) & (fully<=ymax)
 
-    # redo the suppressed data to remove all_dark:
-    sup  = (all_dark == False) & (x < 0.001)
-    if (alldark):
-        plt.plot(cmean[sup],cvari[sup],".",color="black",label="normal pixels (1%)")
-        plt.plot(cmean[all_dark],cvari[all_dark],".",color="blue",label="dark pixels")    
-        plt.ylim(0,20)    
-        plt.xlim(0,4)   
-        plt.legend(numpoints=1,loc=0,frameon=False)
-        plt.savefig("alldark.png")
-        plt.show()
+    if (args.commit):
+        print "saving dark pixel map to calibration directory."
+        np.save("calib/all_dark.npy", all_dark)
 
-    print all_dark
-    np.save("calib/all_dark.npy", all_dark)
+    plt.subplot(2,1,1)
+    plt.hist2d(mean[(all_dark==False)],vari[(all_dark==False)],norm=LogNorm(),bins=[100,100],range=[[0,max_mean],[0,max_vari]])
+    plt.xlabel("mean")
+    plt.ylabel("variance")
+    plt.subplot(2,1,2)
+    plt.hist2d(mean[(all_dark==True)],vari[(all_dark==True)],norm=LogNorm(),bins=[100,100],range=[[0,max_mean],[0,max_vari]])
+    plt.xlabel("mean")
+    plt.ylabel("variance")
+    plt.savefig("plots/dark_final.pdf")
+    plt.show()
 
+    return 
+
+    #
+    # investigate dark pixels with high variance:
+    # 
+
+    strange = all_dark & (vari > 7)
+
+    plt.plot(fullx[strange],fully[strange],"o")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.show();
 
 
     
 if __name__ == "__main__":
-    import sys
-    if (len(sys.argv) != 2):
-        sys.exit(0)
+    example_text = '''examples:
 
-    filename = str(sys.argv[1])
-    print "processing file:  ", filename
-    process(filename)
+    ./dark_pixels.py data/combined/dark_50000.npz'''
+    
+    parser = argparse.ArgumentParser(description='Combine multiple pixelstats data files.', epilog=example_text,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('file', metavar='FILE', nargs=1, help='file to process')
+    parser.add_argument('--skip_prelim',action="store_true", help="skip the preliminary plots.")
+    parser.add_argument('--slope', metavar='SLOPE',nargs=1, type=float, help='set slope factor to SLOPE (default: %(default).2f)', default=0.6)
+    parser.add_argument('--offset', metavar='OFFSET',nargs=1, type=float, help='set offset factor to OFFSET (default: %(default).2f)', default=0.05)
+    parser.add_argument('--commit',action="store_true", help="save dark pixel map to calibration directory")
+    parser.add_argument('--period', nargs=2, metavar=("X","Y"), type=int,help="specify dark pixel pattern period in x and y", default=[0,0])
+    args = parser.parse_args()
 
+    process(args.file[0], args)
