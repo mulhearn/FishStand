@@ -2,178 +2,154 @@ package edu.ucdavis.crayfis.fishstand;
 
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.Type;
 import android.util.Log;
 
 import java.io.DataOutputStream;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import io.crayfis.android.ScriptC_pixelstats;
 
 public class PixelStats implements Analysis {
-    public static final String TAG = "PixelStats";
+    private static final String TAG = "PixelStats";
 
-    int num_files = 10;
-    int num_pixels;
-    //int step_pixels = 117;
-    int step_pixels = 17;
+    private static final int NUM_FILES = 0;
 
-    int num_regions = 20;
-    int region_size;
-    int images = 0;
+    private AtomicInteger images = new AtomicInteger();
+    private int num_pixels;
 
-    int offset = 0;
-    long run_exposure    = 0;
-    int run_sensitivity = 0;
+    // FIXME: what do with these when we aren't cycling?
+    private long run_exposure = 0;
+    private int run_sensitivity = 0;
 
-    long[] sum = null;
-    long[] ssq = null;
+    private Allocation abuf;
+    private Allocation sum;
+    private Allocation ssq;
+    private ScriptC_pixelstats script;
 
-    //int num_settings = 0;
-    //int[] exposures     = {};
-    //int[] sensitivities = {};
-
-    //int num_settings = 6;
-    //long[] exposures     = {32000, 100000, 320000, 1000000, 3200000, 10000000};
-    //int[] sensitivities = {640,640,640,640,640,640};
-
-
-    int num_settings = 4;
-    long[] exposures     = {500000, 5000000, 50000000, 500000000};
-    int[] sensitivities = {640,640,640,640};
-
-    int num_repeats = 5;
-    int fixed_offset = -1;
-    int first        = 0;
-
-    boolean write_files=true;
+    private int first = 0;
+    private static final boolean CYCLE = false;
+    private long[] exposures     = {500000, 5000000, 50000000, 500000000};
+    private int[] sensitivities = {640};
 
     public void Init() {
         int run_offset = App.getPref().getInt("run_num", 0);
+        if(first == 0) first = run_offset;
 
-        first = 0;
-
-        if (first > 0){
-            if (run_offset > first){
-                run_offset = run_offset - first;
-            } else {
-                run_offset = 0;
-            }
-        }
-
-        if (num_settings == 0) {
-            offset = run_offset % step_pixels;
-            run_exposure    = App.getCamera().max_exp;
-            run_sensitivity = App.getCamera().max_analog;
-        } else {
-            int cycle = run_offset % (step_pixels * num_settings * num_repeats);
-            offset = cycle / (num_settings * num_repeats);
-            int iset = cycle % num_settings;
-            run_exposure    = exposures[iset];
-            run_sensitivity = sensitivities[iset];
-        }
-
-        if (fixed_offset >= 0){
-            offset = fixed_offset;
+        if (CYCLE) {
+            int iset = run_offset - first;
+            run_exposure    = exposures[iset % exposures.length];
+            run_sensitivity = sensitivities[iset % sensitivities.length];
         }
 
 	    int nx = App.getCamera().raw_size.getWidth();
         int ny = App.getCamera().raw_size.getHeight();
-	    num_pixels = (nx * ny - offset) / step_pixels;
-        if ((nx*ny - offset) % step_pixels != 0)
-            num_pixels = num_pixels+1;
+        num_pixels = nx * ny;
 
-        region_size = num_pixels / num_regions;
-        if (num_pixels % num_regions != 0){
-            region_size = region_size + 1;
-        }
+        App.log().append("num_pixels:   " + num_pixels + "\n")
+                .append("allocating memory, please be patient...\n");
 
-        String str = "";
-        str += "num_pixels:   " + num_pixels + "\n";
-        str += "num_regions:  " + num_regions + "\n";
-        str += "step_pixels:  " + step_pixels + "\n";
-        str += "region_size:  " + region_size + "\n";
-        str += "allocating memory, please be patient...\n";
-        App.log().append(str);
-        sum = new long[num_pixels];
-        ssq = new long[num_pixels];
+        Type type16 = new Type.Builder(App.getRenderScript(), Element.U16(App.getRenderScript()))
+                .setX(nx)
+                .setY(ny)
+                .create();
+
+        Type type32 = new Type.Builder(App.getRenderScript(), Element.U32(App.getRenderScript()))
+                .setX(nx)
+                .setY(ny)
+                .create();
+
+        Type type64 = new Type.Builder(App.getRenderScript(), Element.U64(App.getRenderScript()))
+                .setX(nx)
+                .setY(ny)
+                .create();
+
+        abuf = Allocation.createTyped(App.getRenderScript(), type16);
+        sum = Allocation.createTyped(App.getRenderScript(), type32);
+        ssq = Allocation.createTyped(App.getRenderScript(), type64);
+
+        script = new ScriptC_pixelstats(App.getRenderScript());
+        script.set_g_sum(sum);
+        script.set_g_ssq(ssq);
+
         App.log().append("finished allocating memory.\n");
     }
 
     public void Next(CaptureRequest.Builder request) {
-        request.set(CaptureRequest.SENSOR_EXPOSURE_TIME, run_exposure);
-        request.set(CaptureRequest.SENSOR_SENSITIVITY, run_sensitivity);
+        if(CYCLE) {
+            request.set(CaptureRequest.SENSOR_EXPOSURE_TIME, run_exposure);
+            request.set(CaptureRequest.SENSOR_SENSITIVITY, run_sensitivity);
+        }
     }
 
     public void ProcessImage(Image img) {
-        synchronized(this){
-            images++;
-        }
+        images.incrementAndGet();
 
         Image.Plane iplane = img.getPlanes()[0];
-        ByteBuffer buf = iplane.getBuffer();
-        int pw = iplane.getPixelStride();
+        ShortBuffer buf = iplane.getBuffer().asShortBuffer();
 
-        RegionLock lock = new RegionLock(num_regions);
+        final short[] vals;
+        if(buf.hasArray()) {
+            vals = buf.array();
+        } else {
+            vals = new short[buf.capacity()];
+            buf.get(vals);
+            buf.rewind();
+        }
 
-        Boolean todo[] = lock.newToDoList();
-        do {
-            int region = lock.lockRegion(todo);
-            while(region < 0){
-                // no unfinished and available region, so wait a spell:
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                region = lock.lockRegion(todo);
-            }
-
-            int start = region*region_size;
-            int end   = (region+1)*region_size;
-            if (end > num_pixels)
-                end = num_pixels;
-            for (int ipix = start; ipix < end; ipix++){
-                int index = (offset + ipix * step_pixels ) * pw;
-                char b = buf.getChar(index);
-                sum[ipix] += b;
-                ssq[ipix] += b*b;
-            }
-            lock.releaseRegion(region);
-        } while(lock.stillWorking(todo));
+        synchronized (abuf) {
+            abuf.copyFromUnchecked(vals);
+            script.forEach_add(abuf);
+        }
     }
 
     public void ProcessRun() {
-        if (write_files) {
-            WriteOutput();
+        abuf.destroy();
+
+        int[] sum_buf = new int[num_pixels];
+        sum.copyTo(sum_buf);
+        sum.destroy();
+
+        long[] ssq_buf = new long[num_pixels];
+        ssq.copyTo(ssq_buf);
+        ssq.destroy();
+
+        if (NUM_FILES > 0) {
+            WriteOutput(sum_buf, ssq_buf);
         }
         long outer_sum = 0;
         for (int ipix=0; ipix<num_pixels;ipix++){
-            outer_sum += sum[ipix];
+            outer_sum += sum_buf[ipix];
         }
         double avg = 0;
-        double denom = (double) (num_pixels * images);
-        if (denom > 0){
-            avg = outer_sum / denom;
+        double denom = (double) num_pixels * images.intValue();
+        Log.d(TAG, "Total images: " + images.intValue());
+        Log.d(TAG, "avg = " + outer_sum + " / " + denom);
+        try {
+            avg = outer_sum / (double) num_pixels / images.intValue();
+        } catch (ArithmeticException e) {
+            avg = 0;
         }
-        String logstr = "run exposure:     " + run_exposure + "\n";
-        logstr += "run sensitivity:  " + run_sensitivity + "\n";
-        logstr += "mean pixel value:  " + avg + "\n";
-        logstr += "pixel step:        " + step_pixels + "\n";
-        logstr += "pixel offset:      " + offset + "\n";
-
-        App.log().append(logstr);
+        App.log().append("run exposure:     " + run_exposure + "\n")
+                .append("run sensitivity:  " + run_sensitivity + "\n")
+                .append("mean pixel value:  " + avg + "\n");
     }
 
 
-    private void WriteOutput() {
+    private void WriteOutput(int[] sum_buf, long[] ssq_buf) {
         try {
             int run_num = App.getPref().getInt("run_num", 0);
 
-            int pixels_per_file = num_pixels / num_files;
-            if (num_pixels % num_files != 0){
+            int pixels_per_file = num_pixels / NUM_FILES;
+            if (num_pixels % NUM_FILES != 0){
                 pixels_per_file = pixels_per_file + 1;
             }
 
-            for (int ifile = 0; ifile < num_files; ifile++) {
+            for (int ifile = 0; ifile < NUM_FILES; ifile++) {
                 int pixel_start = pixels_per_file * ifile;
                 int pixel_end   = pixel_start + pixels_per_file;
                 if (pixel_end > num_pixels){
@@ -189,25 +165,23 @@ public class PixelStats implements Analysis {
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
                 //additional header items (should match above size!)
-                writer.writeInt(images);
-                writer.writeInt(num_files);
+                writer.writeInt(images.intValue());
+                writer.writeInt(NUM_FILES);
                 writer.writeInt(ifile);
                 writer.writeInt(App.getCamera().raw_size.getWidth());
                 writer.writeInt(App.getCamera().raw_size.getHeight());
                 writer.writeInt(run_sensitivity);
                 writer.writeInt((int) (run_exposure/1000));
-                writer.writeInt(step_pixels);
-                writer.writeInt(offset);
-                writer.writeInt(num_pixels);
                 writer.writeInt(pixel_start);
                 writer.writeInt(pixel_end);
 
                 // payload
                 for (int i = pixel_start; i < pixel_end; i++) {
-                    writer.writeLong(sum[i]);
+                    writer.writeInt(sum_buf[i]);
                 }
+
                 for (int i = pixel_start; i < pixel_end; i++) {
-                    writer.writeLong(ssq[i]);
+                    writer.writeLong(ssq_buf[i]);
                 }
                 writer.flush();
             }

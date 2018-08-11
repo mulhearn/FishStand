@@ -242,7 +242,7 @@ public class Camera {
         }
         @Override
         public void onError(@NonNull CameraDevice camera, int error) {
-            App.log().append("Camera in error!\n");
+            App.log().append("Camera in error! " + error + "\n");
             cdevice.close();
             cdevice = null;
         }
