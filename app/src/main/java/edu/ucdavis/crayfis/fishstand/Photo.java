@@ -15,7 +15,6 @@ public class Photo implements Analysis {
     }
 
     public void Next(CaptureRequest.Builder request) {
-        request.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 200*App.getCamera().min_exp);
     }
 
     public void ProcessImage(Image img) {

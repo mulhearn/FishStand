@@ -266,10 +266,10 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                 App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
         }
 
-        if (num_frames == num) {
+        if (num_frames == num + 1) {
             frame.image.close();
             App.updateState(App.STATE.STOPPING);
-        } else if(num_frames < num) {
+        } else if(num_frames <= num) {
             try {
                 AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
                     @Override

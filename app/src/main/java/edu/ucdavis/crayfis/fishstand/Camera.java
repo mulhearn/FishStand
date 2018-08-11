@@ -55,13 +55,15 @@ public class Camera {
     private final int max_images=10;
 
     // discovered camera properties for RAW format at highest resolution
-    public Size raw_size;
-    public long min_exp=0;
-    public long max_exp=0;
-    public int min_sens=0;
-    public int max_sens=0;
-    public int max_analog=0;
+    private long min_exp=0;
+    private long max_exp=0;
+    private int min_sens=0;
+    private int max_sens=0;
+    private int max_analog=0;
 
+    private Size raw_size;
+    private int iso;
+    private long exposure;
 
 
     public void Init() {
@@ -289,6 +291,10 @@ public class Camera {
             App.log().append("Starting camera!\n");
             fcallback = callback;
             ireader.acquireLatestImage();
+
+            iso = crequestbuilder.get(CaptureRequest.SENSOR_SENSITIVITY);
+            exposure = crequestbuilder.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
+
             try {
                 csession.setRepeatingRequest(crequestbuilder.build(), captureCallback, chandler);
             } catch (CameraAccessException e) {
@@ -303,6 +309,22 @@ public class Camera {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    public int getResX() {
+        return raw_size.getWidth();
+    }
+
+    public int getResY() {
+        return raw_size.getHeight();
+    }
+
+    public int getISO() {
+        return iso;
+    }
+
+    public long getExposure() {
+        return exposure;
     }
 
     private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
