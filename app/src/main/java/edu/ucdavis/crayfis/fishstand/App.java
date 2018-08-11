@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.renderscript.RenderScript;
 import android.support.v4.content.LocalBroadcastManager;
 
 //
@@ -61,6 +62,14 @@ public class App extends Application implements Runnable {
             while(instance.handler == null){}
         }
         return instance.handler;
+    }
+
+    private RenderScript rs;
+    public static RenderScript getRenderScript() {
+        if (instance.rs == null) {
+            instance.rs = RenderScript.create(instance);
+        }
+        return instance.rs;
     }
 
     private Camera camera;

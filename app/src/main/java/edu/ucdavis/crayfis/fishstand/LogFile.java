@@ -11,7 +11,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class LogFile {
-    static final String TAG = "Log";
+    private static final String TAG = "Log";
     private Writer log_writer = null;
 
     private String logtxt = "";
@@ -36,12 +36,12 @@ public class LogFile {
         }
     }
 
-    public void append(String msg) {
+    public LogFile append(String msg) {
         logtxt = logtxt + msg;
         update.run();
 
         if (log_writer == null){
-            return;
+            return null;
         }
         try {
             log_writer.write(msg);
@@ -49,6 +49,7 @@ public class LogFile {
         } catch(IOException e){
             Log.e(TAG, e.getMessage());
         }
+        return this;
     }
 
     private Runnable update = new Runnable() {public void run() {} };

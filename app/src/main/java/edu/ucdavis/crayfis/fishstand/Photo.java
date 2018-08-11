@@ -11,14 +11,6 @@ import java.nio.ByteBuffer;
 public class Photo implements Analysis {
     //public static final String TAG = "Photo";
 
-    public static Analysis create() {
-        Photo photo = new Photo();
-        return (Analysis) photo;
-    }
-
-    private Photo() {
-    }
-
     public void Init() {
     }
 
@@ -26,7 +18,7 @@ public class Photo implements Analysis {
         request.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 200*App.getCamera().min_exp);
     }
 
-    public void ProcessImage(Image img, int img_index) {
+    public void ProcessImage(Image img) {
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();
 

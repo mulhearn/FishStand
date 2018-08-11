@@ -46,14 +46,6 @@ public class PixelStats implements Analysis {
 
     boolean write_files=true;
 
-    public static Analysis create() {
-        PixelStats a = new PixelStats();
-        return (Analysis) a;
-    }
-
-    private PixelStats() {
-    }
-
     public void Init() {
         int run_offset = App.getPref().getInt("run_num", 0);
 
@@ -111,7 +103,7 @@ public class PixelStats implements Analysis {
         request.set(CaptureRequest.SENSOR_SENSITIVITY, run_sensitivity);
     }
 
-    public void ProcessImage(Image img, int img_index) {
+    public void ProcessImage(Image img) {
         synchronized(this){
             images++;
         }

@@ -5,9 +5,9 @@ import android.media.Image;
 
 public interface Analysis {
     // DAQ interface:
-    public void Init();
-    public void Next(CaptureRequest.Builder request);
-    public void ProcessImage(Image img, int img_index);
-    public void ProcessRun();
+    void Init();
+    void Next(CaptureRequest.Builder request);
+    void ProcessImage(Image img);
+    void ProcessRun();
 }
 

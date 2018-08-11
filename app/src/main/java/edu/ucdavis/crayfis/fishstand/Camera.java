@@ -4,10 +4,12 @@ import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 import android.content.Context;
 import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CameraManager;
@@ -22,6 +24,7 @@ import android.graphics.ImageFormat;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.util.Log;
 import android.util.Range;
 import android.util.SizeF;
 import android.util.Size;
@@ -30,18 +33,26 @@ import android.view.Surface;
 
 public class Camera {
 
+    private static final String TAG = "Camera";
+
     //camera2 api objects
-    public String cid;
-    public CameraManager cmanager;
-    public CameraCharacteristics cchars;
-    public CameraDevice cdevice;
-    public CameraCaptureSession csession;
-    public HandlerThread cthread;
-    public Handler chandler;
-    public ImageReader ireader;
+    private String cid;
+    private CameraManager cmanager;
+    private CameraCharacteristics cchars;
+    private CameraDevice cdevice;
+    private CameraCaptureSession csession;
+    CaptureRequest.Builder crequestbuilder;
+    private HandlerThread cthread;
+    private Handler chandler;
+
+    private ImageReader ireader;
+    private final Frame.Builder fbuilder = new Frame.Builder();
+    private Frame.OnFrameCallback fcallback;
+    private AtomicInteger num_frames;
+
     private Boolean init = false;
 
-    public final int max_images=10;
+    private final int max_images=10;
 
     // discovered camera properties for RAW format at highest resolution
     public Size raw_size;
@@ -54,6 +65,8 @@ public class Camera {
 
 
     public void Init() {
+        num_frames = new AtomicInteger();
+
         cthread = new HandlerThread("Camera");
         cthread.start();
         chandler = new Handler(cthread.getLooper());
@@ -68,18 +81,11 @@ public class Camera {
             try {
                 Thread.sleep(100L);
             } catch (InterruptedException e) {
+                e.printStackTrace();
                 // continue
             }
         }
     }
-
-    //Due to asynchronous call back, init is broken into steps, with the callback from each step
-    //  calling the next step.
-    //
-    // void init_stage1(); // open the camera device
-    // void init_stage2(); // request a capture session
-    // void init_stage3(); // take initial photo
-    // voit init_stage4(); // declare success
 
     private void init_stage1() {
         App.log().append("init started at "
@@ -198,29 +204,7 @@ public class Camera {
         }
     }
 
-
-    // call back from stage1, saves open camera device and calls stage2:
-
-    private final CameraDevice.StateCallback deviceCallback = new CameraDevice.StateCallback() {
-        @Override
-        public void onOpened(CameraDevice camera) {
-            //This is called when the camera is open
-            cdevice = camera;
-            App.log().append("Camera is open.\n");
-            init_stage2();
-        }
-        @Override
-        public void onDisconnected(@NonNull CameraDevice camera) {
-            cdevice.close();
-        }
-        @Override
-        public void onError(@NonNull CameraDevice camera, int error) {
-            cdevice.close();
-            cdevice = null;
-        }
-    };
-
-    void init_stage2() {
+    private void init_stage2() {
         //summary += "stage1 init success\n";
         // check camera open?  Or at least non-null?
         App.log().append("Creating capture session\n");
@@ -233,6 +217,7 @@ public class Camera {
         }
         List<Surface> outputs = new ArrayList<Surface>(1);
         outputs.add(ireader.getSurface());
+        ireader.setOnImageAvailableListener(imageCallback, chandler);
         try {
             cdevice.createCaptureSession(outputs, sessionCallback, chandler);
         } catch (CameraAccessException e) {
@@ -240,65 +225,148 @@ public class Camera {
         }
     }
 
+    // call back from stage1, saves open camera device and calls stage2:
+
+    private final CameraDevice.StateCallback deviceCallback = new CameraDevice.StateCallback() {
+        @Override
+        public void onOpened(@NonNull CameraDevice camera) {
+            //This is called when the camera is open
+            cdevice = camera;
+            App.log().append("Camera is open.\n");
+            init_stage2();
+        }
+        @Override
+        public void onDisconnected(@NonNull CameraDevice camera) {
+            App.log().append("Camera is closed.\n");
+            cdevice.close();
+        }
+        @Override
+        public void onError(@NonNull CameraDevice camera, int error) {
+            App.log().append("Camera in error!\n");
+            cdevice.close();
+            cdevice = null;
+        }
+    };
+
     private final CameraCaptureSession.StateCallback sessionCallback = new CameraCaptureSession.StateCallback(){
         @Override
         public void	onConfigured(@NonNull CameraCaptureSession session){
             App.log().append("Camera capture session configured.\n");
             csession = session;
-            init_stage3();
+            try {
+                crequestbuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                crequestbuilder.addTarget(ireader.getSurface());
+                crequestbuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, Math.min(max_exp, 1000000000L));
+                crequestbuilder.set(CaptureRequest.SENSOR_SENSITIVITY, max_analog);
+                crequestbuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+                crequestbuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+                crequestbuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
+                crequestbuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
+                crequestbuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
+                crequestbuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
+                crequestbuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
+                crequestbuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+            App.log().append("camera initialization has succeeded.\n");
+            init = true;
         }
 
         @Override
         public void onConfigureFailed(@NonNull CameraCaptureSession session) {
 
         }
+
+        @Override
+        public void onClosed(@NonNull CameraCaptureSession session) {
+            App.log().append("Camera capture session closed");
+        }
     };
 
-    private void init_stage3(){
-        //summary += "stage2 init success\n";
-        //check capture session is available?
-        ireader.setOnImageAvailableListener(doNothingImageListener, chandler);
+    public void start(Frame.OnFrameCallback callback) {
+        if(init) {
+            App.log().append("Starting camera!\n");
+            fcallback = callback;
+            ireader.acquireLatestImage();
+            try {
+                csession.setRepeatingRequest(crequestbuilder.build(), captureCallback, chandler);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
+    public void stop() {
         try {
-            final CaptureRequest.Builder captureBuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            captureBuilder.addTarget(ireader.getSurface());
-            captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, max_exp);
-            captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, max_analog);
-
-            csession.capture(captureBuilder.build(), doNothingCaptureListener, chandler);
+            csession.stopRepeating();
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
 
-    private ImageReader.OnImageAvailableListener doNothingImageListener = new ImageReader.OnImageAvailableListener() {
+    private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
-        public void onImageAvailable(ImageReader reader) {
-            Image img = reader.acquireLatestImage();
-            App.log().append("Test image acquired successfully.\n");
-            String summary = "";
-            summary += "initial test image available\n";
-            summary += "row stride: " + img.getPlanes()[0].getRowStride() + "\n";
-            summary += "pixel stride: " + img.getPlanes()[0].getPixelStride() + "\n";
-            App.log().append(summary);
-            img.close();
-            init_stage4();
-        }
-    };
-
-    private final CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                       @NonNull CaptureRequest request,
-                                       @NonNull TotalCaptureResult result) {
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            App.log().append("Non-null total capture results received.\n");
+            Frame frame = fbuilder.setResult(result)
+                    .build();
+            if (frame != null) {
+                fcallback.onFrame(frame, num_frames.incrementAndGet());
+            }
         }
     };
 
-    private void init_stage4(){
-        App.log().append("camera initialization has succeeded.\n");
-        init = true;
+    private final ImageReader.OnImageAvailableListener imageCallback = new ImageReader.OnImageAvailableListener() {
+        @Override
+        public void onImageAvailable(ImageReader imageReader) {
+            Frame frame = fbuilder.setImage(imageReader.acquireLatestImage())
+                    .build();
+            if (frame != null) {
+                fcallback.onFrame(frame, num_frames.incrementAndGet());
+            }
+        }
+    };
+
+    public static class Frame {
+
+        public final Image image;
+        public final TotalCaptureResult result;
+
+        private Frame(Image image, TotalCaptureResult result) {
+            this.image = image;
+            this.result = result;
+        }
+
+        private static class Builder {
+            private Image bImage;
+            private TotalCaptureResult bResult;
+
+            private Builder setImage(Image image) {
+                bImage = image;
+                return this;
+            }
+
+            private Builder setResult(TotalCaptureResult result) {
+                bResult = result;
+                return this;
+            }
+
+            private synchronized Frame build() {
+                if(bImage != null && bResult != null) {
+                    Frame frame = new Frame(bImage, bResult);
+                    bImage = null;
+                    bResult = null;
+                    return frame;
+                }
+
+                return null;
+            }
+        }
+
+        public interface OnFrameCallback {
+            void onFrame(@NonNull Frame frame, int num_frames);
+        }
     }
 
 }

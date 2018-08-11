@@ -9,14 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.hardware.camera2.CameraAccessException;
-import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.TotalCaptureResult;
-import android.media.Image;
-import android.media.ImageReader;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.SystemClock;
@@ -37,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Created by mulhearn on 4/28/18.
  */
 
-public class DaqService extends Service {
+public class DaqService extends Service implements Camera.Frame.OnFrameCallback {
 
     private static final float MIN_BATTERY_PCT = .3f;
     private static final float RESTART_BATTERY_PCT = .9f;
@@ -65,7 +58,7 @@ public class DaqService extends Service {
         }
     };
 
-    private AtomicInteger requests, events;
+    private AtomicInteger events;
 
     private String job_tag;
     private int num;
@@ -145,22 +138,40 @@ public class DaqService extends Service {
         int run_num = App.getPref().getInt("run_num", 0);
         App.log().newRun(run_num);
 
-        Init();
+        App.log().append("init called.\n");
+        App.getConfig().parseConfig();
+        App.getConfig().logConfig();
+
+        events = new AtomicInteger();
+
+        job_tag = App.getConfig().getString("tag", "unspecified");
+        num     = App.getConfig().getInteger("num", 1);
+        delay   = App.getConfig().getInteger("delay", 0);
+        repeat  = App.getConfig().getBoolean("repeat", false);
+        String analysis_name = App.getConfig().getString("analysis", "");
+
+        String logstr =  "analysis:       " + analysis_name + "\n";
+        logstr += "num of images:  " + num + "\n";
+        logstr += "repeat mode:    " + repeat + "\n";
+        logstr += "job tag:        " + job_tag + "\n";
+        logstr += "delay:          " + delay + "\n";
+        App.log().append(logstr);
+
+        switch (analysis_name.toLowerCase()) {
+            case "pixelstats":
+                analysis = new PixelStats();
+                break;
+            case "photo":
+                analysis = new Photo();
+                break;
+            default:
+                analysis = null;
+        }
+        if (analysis != null){
+            analysis.Init();
+        }
 
         App.log().append("starting run " + run_num + "\n");
-
-        if (App.getCamera().ireader == null) {
-            App.updateState(App.STATE.READY);
-            App.log().append("ireader is null after init...camera configuration failed.\n");
-            return;
-        }
-        // clear any stale photo:
-        Image img = App.getCamera().ireader.acquireLatestImage();
-        if (img != null) {
-            App.log().append("discarding unexpected image.\n");
-            img.close();
-        }
-
         App.log().append("Finished initialization.\n");
 
         if ((!delay_applied) && (delay > 0)) {
@@ -169,54 +180,24 @@ public class DaqService extends Service {
             delay_applied = true;
         }
 
-        try {
-            final CaptureRequest.Builder captureBuilder = App.getCamera().cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            captureBuilder.addTarget(App.getCamera().ireader.getSurface());
-            captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, Math.min(App.getCamera().max_exp, 1000000000L));
-            captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, App.getCamera().max_analog);
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-            captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
-            captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
-            captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
-            captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
-            captureBuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
-            captureBuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
-
-            if (analysis != null){
-                analysis.Next(captureBuilder);
-            }
-
-            App.getCamera().csession.setRepeatingRequest(captureBuilder.build(), doNothingCaptureListener, App.getHandler());
-
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
+        if (analysis != null){
+            analysis.Next(App.getCamera().crequestbuilder);
         }
+
+        App.getCamera().start(this);
     }
 
     private void Stop() {
         Log.d(TAG, "Stop()");
         App.log().append("run stopping\n");
-        try {
-            App.getCamera().csession.stopRepeating();
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
+        App.getCamera().stop();
 
         if (analysis != null){
             analysis.ProcessRun();
         }
 
         String summary = "";
-        //summary += "run start:  " + run_start + "\n";
-        //summary += "run end:    " + run_end + "\n";
-        //long duration = run_end - run_start;
-        //if ((events > 0) && (duration > 0)){
-        //    double frame_rate = ((double) duration) / ((double) events);
-        //    summary += "framerate:  " + frame_rate + "\n";
-        //}
-        summary += "requests:  " + requests.intValue() + "\n";
-        summary += "success:   " + events.intValue() + "\n";
+        summary += "events:   " + events.intValue() + "\n";
         App.log().append(summary);
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
@@ -267,122 +248,66 @@ public class DaqService extends Service {
     }
 
 
-    // interface for ImageReader's OnImageAvailableListener callback:
-    ImageReader.OnImageAvailableListener daqImageListener = new ImageReader.OnImageAvailableListener() {
-        @Override
-        public void onImageAvailable(final ImageReader reader) {
-            if (events.intValue() < 10 && App.getAppState() == App.STATE.RUNNING) {
-                App.log().append("Image available called.\n");
-            }
+    @Override
+    public void onFrame(@NonNull final Camera.Frame frame, final int num_frames) {
 
-            final Image img = reader.acquireNextImage();
-            if (img == null) {
-                Log.e(TAG,"Image returned from reader was Null.");
-                return;
-            }
+        final int verbosity = getEventVerbosity(num_frames);
 
-            int current_requests = requests.incrementAndGet();
-            if (current_requests == num) {
-                img.close();
-                App.updateState(App.STATE.STOPPING);
-            } else if(current_requests < num) {
-                try {
-                    AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            processImage(img);
+        switch (verbosity) {
+            case 2:
+                App.log().append("row stride: " + frame.image.getPlanes()[0].getRowStride() + "\n")
+                        .append("pixel stride: " + frame.image.getPlanes()[0].getPixelStride() + "\n");
+            case 1:
+                App.log().append("Frame acquired \n");
+            case 0:
+                Long exp = frame.result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                Long dur = frame.result.get(CaptureResult.SENSOR_FRAME_DURATION);
+                Integer iso = frame.result.get(CaptureResult.SENSOR_SENSITIVITY);
+                App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
+        }
+
+        if (num_frames == num) {
+            frame.image.close();
+            App.updateState(App.STATE.STOPPING);
+        } else if(num_frames < num) {
+            try {
+                AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (analysis != null){
+                            analysis.ProcessImage(frame.image);
                         }
-                    });
-                } catch (IllegalStateException e) {
-                    Log.e(TAG, "Failed to start image processing thread.");
-                    try {
-                        img.close();
-                    } catch (IllegalStateException e2) {
-                        Log.e(TAG, "Image close failure.");
+
+                        try {
+                            frame.image.close();
+                        } catch (IllegalStateException e) {
+                            Log.e(TAG,"Image close failure.");
+                            return;
+                        }
+                        int num_events = events.incrementAndGet();
+
+                        if (verbosity >= 0){
+                            String msg = "finished processing " + num_events + " events.\n";
+                            App.log().append(msg);
+                        }
                     }
+                });
+            } catch (IllegalStateException e) {
+                Log.e(TAG, "Failed to start image processing thread.");
+                try {
+                    frame.image.close();
+                } catch (IllegalStateException e2) {
+                    Log.e(TAG, "Image close failure.");
                 }
             }
         }
-    };
-
-    private boolean verbose_event(int event) {
-        return event < 10
-                || (event < 100 && event%10 == 0)
-                || event%100 == 0;
     }
 
-
-    private void processImage(Image img) {
-
-        if (analysis != null){
-            analysis.ProcessImage(img, events.intValue());
-        }
-
-        try {
-            img.close();
-        } catch (IllegalStateException e) {
-            Log.e(TAG,"Image close failure.");
-            return;
-        }
-        if (verbose_event(events.incrementAndGet())){
-            String msg = "finished processing " + events + " events.\n";
-            App.log().append(msg);
-        }
+    public static int getEventVerbosity(int event) {
+        if(event == 1) return 2;
+        if(event < 10) return 1;
+        if((event < 100 && event % 10 == 0) || event % 100 == 0) return 0;
+        return -1;
     }
-
-    public void Init() {
-        App.log().append("init called.\n");
-        App.getConfig().parseConfig();
-        App.getConfig().logConfig();
-
-        App.getCamera().ireader.setOnImageAvailableListener(daqImageListener, App.getHandler());
-        requests = new AtomicInteger();
-        events = new AtomicInteger();
-
-        job_tag = App.getConfig().getString("tag", "unspecified");
-        num     = App.getConfig().getInteger("num", 1);
-        delay   = App.getConfig().getInteger("delay", 0);
-        repeat  = App.getConfig().getBoolean("repeat", false);
-        String analysis_name = App.getConfig().getString("analysis", "");
-
-        String logstr =  "analysis:       " + analysis_name + "\n";
-        logstr += "num of images:  " + num + "\n";
-        logstr += "repeat mode:    " + repeat + "\n";
-        logstr += "job tag:        " + job_tag + "\n";
-        logstr += "delay:          " + delay + "\n";
-        App.log().append(logstr);
-
-        switch (analysis_name.toLowerCase()) {
-            case "pixelstats":
-                analysis = PixelStats.create();
-                break;
-            case "photo":
-                analysis = Photo.create();
-                break;
-            default:
-                analysis = null;
-        }
-        if (analysis != null){
-            analysis.Init();
-        }
-    }
-
-    final private CameraCaptureSession.CaptureCallback doNothingCaptureListener = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                       @NonNull CaptureRequest request,
-                                       @NonNull TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-
-            long exp = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-            long dur = result.get(CaptureResult.SENSOR_FRAME_DURATION);
-            long iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-            if (verbose_event(events.intValue())) {
-                App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
-            }
-        }
-    };
-
-
 
 }
