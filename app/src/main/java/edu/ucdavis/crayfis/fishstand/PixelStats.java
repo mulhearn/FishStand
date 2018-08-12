@@ -18,6 +18,7 @@ public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
 
     private static final long FILE_SIZE = 5000000L;
+    private static final int DOWNSAMPLE_STEP = 171;
 
     private AtomicInteger images = new AtomicInteger();
     private int num_pixels;
@@ -104,16 +105,21 @@ public class PixelStats implements Analysis {
     public void ProcessRun() {
         abuf.destroy();
 
-        int[] sum_buf = new int[num_pixels];
+        final int[] sum_buf = new int[num_pixels];
         sum.copyTo(sum_buf);
         sum.destroy();
 
-        long[] ssq_buf = new long[num_pixels];
+        final long[] ssq_buf = new long[num_pixels];
         ssq.copyTo(ssq_buf);
         ssq.destroy();
 
         if (FILE_SIZE > 0) {
-            WriteOutput(sum_buf, ssq_buf);
+            App.getHandler().post(new Runnable() {
+                @Override
+                public void run() {
+                    WriteOutput(sum_buf, ssq_buf);
+                };
+            });
         }
         long outer_sum = 0;
         for (int ipix=0; ipix<num_pixels;ipix++){
@@ -142,6 +148,9 @@ public class PixelStats implements Analysis {
                 num_files++;
             }
 
+            final int HEADER_SIZE = 10;
+            final int VERSION = 1;
+
             for (int ifile = 0; ifile < num_files; ifile++) {
                 int pixel_start = pixels_per_file * ifile;
                 int pixel_end   = pixel_start + pixels_per_file;
@@ -153,8 +162,6 @@ public class PixelStats implements Analysis {
                 App.log().append("writing file " + filename + "\n");
                 OutputStream out = Storage.newOutput(filename);
                 DataOutputStream writer = new DataOutputStream(out);
-                final int HEADER_SIZE = 9;
-                final int VERSION = 1;
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
                 //additional header items (should match above size!)
@@ -167,6 +174,7 @@ public class PixelStats implements Analysis {
                 writer.writeInt((int) App.getCamera().getExposure());
                 writer.writeInt(pixel_start);
                 writer.writeInt(pixel_end);
+                writer.writeInt(1); // downsample step
 
                 // payload
                 for (int i = pixel_start; i < pixel_end; i++) {
@@ -177,6 +185,40 @@ public class PixelStats implements Analysis {
                     writer.writeLong(ssq_buf[i]);
                 }
                 writer.flush();
+                writer.close();
+                out.close();
+            }
+
+            // add an extra downsampled file
+            if (DOWNSAMPLE_STEP > 0) {
+                String filename = "run_" + run_num + "_sample" + "_pixelstats.dat";
+                App.log().append("writing file " + filename + "\n");
+                OutputStream out = Storage.newOutput(filename);
+                DataOutputStream writer = new DataOutputStream(out);
+                writer.writeInt(HEADER_SIZE);
+                writer.writeInt(VERSION);
+                //additional header items (should match above size!)
+                writer.writeInt(images.intValue());
+                writer.writeInt(num_files);
+                writer.writeInt(-1); // ifile
+                writer.writeInt(App.getCamera().getResX());
+                writer.writeInt(App.getCamera().getResY());
+                writer.writeInt(App.getCamera().getISO());
+                writer.writeInt((int) App.getCamera().getExposure());
+                writer.writeInt(0); // pixel_start
+                writer.writeInt((num_pixels-1)/DOWNSAMPLE_STEP + 1); // pixel_end
+                writer.writeInt(DOWNSAMPLE_STEP);
+
+                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                    writer.writeInt(sum_buf[i]);
+                }
+
+                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                    writer.writeLong(ssq_buf[i]);
+                }
+                writer.flush();
+                writer.close();
+                out.close();
             }
         } catch(Exception e) {
             Log.e(TAG, e.getMessage());
