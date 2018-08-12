@@ -31,7 +31,7 @@ def process(filename):
         if ((run < CHECK_MIN) or (run > CHECK_MAX)):
             return
 
-    version,header,sum,ssq = unpack_all(filename)
+    version,header,arr_sum,arr_ssq = unpack_all(filename)
 
     exposure = interpret_header(header,"exposure")
     sens     = interpret_header(header,"sens")
@@ -40,13 +40,11 @@ def process(filename):
     
     pixel_start = interpret_header(header,"pixel_start")
     pixel_end   = interpret_header(header,"pixel_end")
-    offset      = interpret_header(header,"offset")
-    step_pixels = interpret_header(header,"step_pixels")
 
     images = interpret_header(header,"images")
     
     
-    if ((CHECK_EXPOSURE > 0) and (exposure != CHECK_EXPOSURE)):
+    if CHECK_EXPOSURE > 0 and exposure != CHECK_EXPOSURE:
         #print "(skipping file ", filename, " with exposure ", exposure, ")"
         return
 
@@ -55,27 +53,21 @@ def process(filename):
 
 
     # take parameters from first file:
-    if (PIXELS  == 0):
+    if PIXELS  == 0:
         PIXELS = width*height
         SENS = sens
         EXPOSURE = exposure
         SUM = np.zeros(PIXELS)
         SSQ = np.zeros(PIXELS)
-        NUM = np.zeros(PIXELS)
+        NUM = images
 
-    if ((exposure!=EXPOSURE) or (sens!=SENS)):
+    if exposure!=EXPOSURE or sens!=SENS:
         print "ERROR: inconsistent run parameters in file ", filename
         unpack_header(filename, show=1)
         exit(0)
 
-
-
-    for i in range(pixel_start, pixel_end):
-        full_index = offset + i*step_pixels
-        flat_index = i - pixel_start
-        SUM[full_index] += sum[flat_index]
-        SSQ[full_index] += ssq[flat_index]
-        NUM[full_index] += images
+    SUM += np.pad(arr_sum, (pixel_start, PIXELS-pixel_end), mode='constant', constant_values=0)
+    SSQ += np.pad(arr_ssq, (pixel_start, PIXELS-pixel_end), mode='constant', constant_values=0)
 
 def post():
     print "saving combined data to", OUTFILE
