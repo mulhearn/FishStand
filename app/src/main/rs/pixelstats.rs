@@ -1,5 +1,5 @@
 #pragma version(1)
-#pragma rs java_package_name(io.crayfis.android)
+#pragma rs java_package_name(edu.ucdavis.crayfis.fishstand)
 #pragma rs_fp_relaxed
 
 rs_allocation g_sum;

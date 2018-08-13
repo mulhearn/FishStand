@@ -3,6 +3,7 @@ package edu.ucdavis.crayfis.fishstand;
 import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
+import android.renderscript.RenderScript;
 import android.renderscript.Type;
 import android.util.Log;
 
@@ -10,8 +11,6 @@ import java.io.DataOutputStream;
 import java.io.OutputStream;
 import java.nio.ShortBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import io.crayfis.android.ScriptC_pixelstats;
 
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
@@ -27,7 +26,7 @@ public class PixelStats implements Analysis {
     private Allocation ssq;
     private ScriptC_pixelstats script;
 
-    public void Init() {
+    public PixelStats() {
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
@@ -36,24 +35,26 @@ public class PixelStats implements Analysis {
         App.log().append("num_pixels:   " + num_pixels + "\n")
                 .append("allocating memory, please be patient...\n");
 
-        Type type16 = new Type.Builder(App.getRenderScript(), Element.U16(App.getRenderScript()))
+        RenderScript rs = App.getRenderScript();
+
+        Type type16 = new Type.Builder(rs, Element.U16(rs))
                 .setX(nx)
                 .setY(ny)
                 .create();
 
-        Type type32 = new Type.Builder(App.getRenderScript(), Element.U32(App.getRenderScript()))
+        Type type32 = new Type.Builder(rs, Element.U32(rs))
                 .setX(nx)
                 .setY(ny)
                 .create();
 
-        Type type64 = new Type.Builder(App.getRenderScript(), Element.U64(App.getRenderScript()))
+        Type type64 = new Type.Builder(rs, Element.U64(rs))
                 .setX(nx)
                 .setY(ny)
                 .create();
 
-        abuf = Allocation.createTyped(App.getRenderScript(), type16);
-        sum = Allocation.createTyped(App.getRenderScript(), type32);
-        ssq = Allocation.createTyped(App.getRenderScript(), type64);
+        abuf = Allocation.createTyped(rs, type16);
+        sum = Allocation.createTyped(rs, type32);
+        ssq = Allocation.createTyped(rs, type64);
 
         script = new ScriptC_pixelstats(App.getRenderScript());
         script.set_g_sum(sum);

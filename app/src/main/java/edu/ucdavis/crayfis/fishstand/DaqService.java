@@ -166,9 +166,6 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             default:
                 analysis = null;
         }
-        if (analysis != null){
-            analysis.Init();
-        }
 
         App.log().append("starting run " + run_num + "\n");
         App.log().append("Finished initialization.\n");

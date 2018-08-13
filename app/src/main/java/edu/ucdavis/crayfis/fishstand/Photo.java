@@ -11,9 +11,6 @@ import java.nio.ByteBuffer;
 public class Photo implements Analysis {
     //public static final String TAG = "Photo";
 
-    public void Init() {
-    }
-
     public void ProcessImage(Image img) {
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();
