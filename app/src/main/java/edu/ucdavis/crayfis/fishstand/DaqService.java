@@ -159,6 +159,10 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             case "photo":
                 analysis = new Photo();
                 break;
+            case "cosmics":
+                analysis = new Cosmics();
+                break;
+
             default:
                 analysis = null;
         }
