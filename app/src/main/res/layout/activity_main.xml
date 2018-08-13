@@ -31,13 +31,13 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="empty text"
-                android:onClick="buttonClicked" />
+                android:onClick="onStartStopClicked" />
 
             <Button
                 android:id="@+id/button2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:onClick="buttonClicked"
+                android:onClick="onConfigClicked"
                 android:text="empty text" />
 
         </LinearLayout>
