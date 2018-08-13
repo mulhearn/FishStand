@@ -1,6 +1,5 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -28,15 +27,7 @@ public class PixelStats implements Analysis {
     private Allocation ssq;
     private ScriptC_pixelstats script;
 
-    private int first = 0;
-    private int run_offset;
-    private static final boolean CYCLE = false;
-    private long[] exposures     = {500000, 5000000, 50000000, 500000000};
-    private int[] sensitivities = {640};
-
     public void Init() {
-        run_offset = App.getPref().getInt("run_num", 0);
-        if(first == 0) first = run_offset;
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
@@ -69,16 +60,6 @@ public class PixelStats implements Analysis {
         script.set_g_ssq(ssq);
 
         App.log().append("finished allocating memory.\n");
-    }
-
-    public void Next(CaptureRequest.Builder request) {
-        if(CYCLE) {
-            int iset = run_offset - first;
-            long run_exposure    = exposures[iset % exposures.length];
-            int run_sensitivity = sensitivities[iset % sensitivities.length];
-            request.set(CaptureRequest.SENSOR_EXPOSURE_TIME, run_exposure);
-            request.set(CaptureRequest.SENSOR_SENSITIVITY, run_sensitivity);
-        }
     }
 
     public void ProcessImage(Image img) {
@@ -114,12 +95,7 @@ public class PixelStats implements Analysis {
         ssq.destroy();
 
         if (FILE_SIZE > 0) {
-            App.getHandler().post(new Runnable() {
-                @Override
-                public void run() {
-                    WriteOutput(sum_buf, ssq_buf);
-                };
-            });
+            WriteOutput(sum_buf, ssq_buf, images.intValue());
         }
         long outer_sum = 0;
         for (int ipix=0; ipix<num_pixels;ipix++){
@@ -129,7 +105,7 @@ public class PixelStats implements Analysis {
         try {
             avg = outer_sum / (double) num_pixels / images.intValue();
         } catch (ArithmeticException e) {
-            avg = 0;
+            avg = -1;
         }
         App.log().append("run exposure:     " + App.getCamera().getExposure() + "\n")
                 .append("run sensitivity:  " + App.getCamera().getISO() + "\n")
@@ -137,12 +113,13 @@ public class PixelStats implements Analysis {
     }
 
 
-    private void WriteOutput(int[] sum_buf, long[] ssq_buf) {
+    private static void WriteOutput(int[] sum_buf, long[] ssq_buf, int num_images) {
         try {
             int run_num = App.getPref().getInt("run_num", 0);
 
             // int (sum) + long (ssq) = 12 bytes
             int pixels_per_file = (int) (FILE_SIZE / 12);
+            int num_pixels = sum_buf.length;
             int num_files = num_pixels / pixels_per_file;
             if(num_pixels % pixels_per_file != 0) {
                 num_files++;
@@ -165,7 +142,7 @@ public class PixelStats implements Analysis {
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
                 //additional header items (should match above size!)
-                writer.writeInt(images.intValue());
+                writer.writeInt(num_images);
                 writer.writeInt(num_files);
                 writer.writeInt(ifile);
                 writer.writeInt(App.getCamera().getResX());
@@ -198,7 +175,7 @@ public class PixelStats implements Analysis {
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
                 //additional header items (should match above size!)
-                writer.writeInt(images.intValue());
+                writer.writeInt(num_images);
                 writer.writeInt(num_files);
                 writer.writeInt(-1); // ifile
                 writer.writeInt(App.getCamera().getResX());

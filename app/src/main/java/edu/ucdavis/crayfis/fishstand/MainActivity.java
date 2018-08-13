@@ -31,6 +31,8 @@ public class MainActivity extends AppCompatActivity {
     private BroadcastReceiver logUpdater;     // update log
     private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
 
+    private Intent service;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -55,6 +57,9 @@ public class MainActivity extends AppCompatActivity {
         if (needed.size() > 0) {
             ActivityCompat.requestPermissions(this, needed.toArray(new String[needed.size()]), MY_PERMISSIONS_REQUEST);
         }
+
+        service = new Intent(MainActivity.this, DaqService.class);
+        startService(service);
     }
 
     @Override
@@ -66,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
                 int duration = Toast.LENGTH_LONG;
                 Toast toast = Toast.makeText(context, text, duration);
                 toast.show();
+                stopService(service);
                 finish();
             }
         }
@@ -78,34 +84,42 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
         stateUpdater = App.getMessage().onStateUpdate(new Runnable() {
             public void run() {
-                Button button = (Button) findViewById(R.id.button1);
-                if (App.getAppState() == App.STATE.READY) {
-                    button.setText("Start DAQ");
-                } else {
-                    button.setText("Stop DAQ");
-                }
-                TextView status = (TextView) findViewById(R.id.status1);
+                Button button = findViewById(R.id.button1);
+                TextView status = findViewById(R.id.status1);
+
                 SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
                 int run_num = pref.getInt("run_num", 1);
-                if (App.getAppState() == App.STATE.RUNNING) {
-                    status.setText("run " + run_num + " running");
-                } else if (App.getAppState() == App.STATE.READY) {
-                    status.setText("run " + run_num + " ready");
-                } else {
-                    status.setText("run " + run_num + " stopping...");
+                switch (App.getAppState()) {
+                    case READY:
+                        button.setEnabled(true);
+                        button.setText("Start DAQ");
+                        status.setText("run " + run_num + " ready");
+                        break;
+                    case RUNNING:
+                        button.setEnabled(true);
+                        button.setText("Stop DAQ");
+                        status.setText("run " + run_num + " running");
+                        break;
+                    case STOPPING:
+                        button.setEnabled(false);
+                        status.setText("run " + run_num + " stopping...");
+                        break;
+                    case CHARGING:
+                        button.setEnabled(true);
+                        status.setText("waiting for battery to charge");
                 }
             }
         });
         App.getMessage().updateState();
 
-        Button button = (Button) findViewById(R.id.button2);
-        TextView status = (TextView) findViewById(R.id.status2);
+        Button button = findViewById(R.id.button2);
+        TextView status = findViewById(R.id.status2);
         button.setText("Config");
         status.setText("unused status line...");
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
             public void run() {
-                TextView logtxt = (TextView) findViewById(R.id.log_text);
+                TextView logtxt = findViewById(R.id.log_text);
                 logtxt.setText(App.log().getTxt());
             }
         });
@@ -113,25 +127,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onStop() {
-        super.onStop();
+    protected void onDestroy() {
+        super.onDestroy();
         App.getMessage().unregister(stateUpdater);
         App.getMessage().unregister(logUpdater);
+        if(App.getAppState() == App.STATE.READY) {
+            stopService(service);
+        }
     }
 
-    public void buttonClicked(View v) {
-        if (v == findViewById(R.id.button1)) {
-            Intent service = new Intent(MainActivity.this, DaqService.class);
-            if (App.getAppState() == App.STATE.READY) {
-                Log.i(TAG, "button starting foreground action...");
-                startService(service);
-            } else {
-                Log.i(TAG, "button stopping foreground action...");
-                stopService(service);
-            }
+    public void onStartStopClicked(View v) {
+        switch (App.getAppState()) {
+            case READY:
+                Log.i(TAG, "button starting run");
+                App.updateState(App.STATE.RUNNING);
+                break;
+            case RUNNING:
+                Log.i(TAG, "button stopping run");
+                App.updateState(App.STATE.STOPPING);
+                break;
+            case CHARGING:
+                Log.i(TAG, "button stopping repeat");
+                App.updateState(App.STATE.READY);
         }
-        if (v == findViewById(R.id.button2)) {
-            App.getConfig().editConfig(this);
-        }
+    }
+
+    public void onConfigClicked(View v) {
+        App.getConfig().editConfig(this);
     }
 }

@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.renderscript.RenderScript;
 import android.support.v4.content.LocalBroadcastManager;
@@ -17,7 +18,7 @@ import android.support.v4.content.LocalBroadcastManager;
 //
 
 
-public class App extends Application implements Runnable {
+public class App extends Application {
     @SuppressLint("StaticFieldLeak")
     private static App instance;
 
@@ -56,10 +57,12 @@ public class App extends Application implements Runnable {
     static public LogFile log(){ return instance.logfile; }
 
     private Handler handler;
+    private HandlerThread handler_thread;
     static public Handler getHandler(){
         if (instance.handler == null){
-            new Thread(instance).start();
-            while(instance.handler == null){}
+            instance.handler_thread = new HandlerThread("Background thread");
+            instance.handler_thread.start();
+            instance.handler = new Handler(instance.handler_thread.getLooper());
         }
         return instance.handler;
     }
@@ -76,7 +79,6 @@ public class App extends Application implements Runnable {
     static public Camera getCamera(){
         if (instance.camera == null) {
             instance.camera = new Camera();
-            instance.camera.Init();
         }
         return instance.camera;
     }
@@ -93,6 +95,7 @@ public class App extends Application implements Runnable {
     public enum STATE {
         RUNNING,   // A run is underway
         STOPPING,  // A run stop has been requested, but worker threads may not have finishd yet
+        CHARGING,  // Waiting for battery to recharge
         READY;     // Ready for a new run.
     }
 
@@ -107,12 +110,7 @@ public class App extends Application implements Runnable {
         Intent intent = new Intent(ACTION_STATE_CHANGE);
         intent.putExtra(EXTRA_NEW_STATE, new_state);
         LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
-    }
-
-    public void run(){
-        Looper.prepare();
-        handler = new Handler();
-        Looper.loop();
+        getMessage().updateState();
     }
 
 }

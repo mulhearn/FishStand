@@ -37,11 +37,11 @@ public class Camera {
 
     //camera2 api objects
     private String cid;
-    private CameraManager cmanager;
+    private final CameraManager cmanager;
     private CameraCharacteristics cchars;
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
-    CaptureRequest.Builder crequestbuilder;
+    private CaptureRequest.Builder crequestbuilder;
     private HandlerThread cthread;
     private Handler chandler;
 
@@ -50,9 +50,7 @@ public class Camera {
     private Frame.OnFrameCallback fcallback;
     private AtomicInteger num_frames;
 
-    private Boolean init = false;
-
-    private final int max_images=10;
+    private int max_images=10;
 
     // discovered camera properties for RAW format at highest resolution
     private long min_exp=0;
@@ -66,30 +64,7 @@ public class Camera {
     private long exposure;
 
 
-    public void Init() {
-        num_frames = new AtomicInteger();
-
-        cthread = new HandlerThread("Camera");
-        cthread.start();
-        chandler = new Handler(cthread.getLooper());
-        chandler.post(new Runnable() {
-            @Override
-            public void run() {
-                init_stage1();
-            }
-        });
-        // should put a timeout here...
-        while(!init){
-            try {
-                Thread.sleep(100L);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-                // continue
-            }
-        }
-    }
-
-    private void init_stage1() {
+    public Camera() {
         App.log().append("init started at "
                 + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
         cmanager = (CameraManager) App.getContext().getSystemService(Context.CAMERA_SERVICE);
@@ -196,12 +171,10 @@ public class Camera {
                 App.log().append(summary);
 
                 App.log().append("Camera settings initialized.\n");
-
-                cmanager.openCamera(cid, deviceCallback, chandler);
             } else {
                 App.log().append("Could not find camera device with sufficient capabilities.  Cannot init.");
             }
-        } catch (CameraAccessException |SecurityException e) {
+        } catch (CameraAccessException | SecurityException e) {
             e.printStackTrace();
         }
     }
@@ -258,8 +231,8 @@ public class Camera {
             try {
                 crequestbuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                 crequestbuilder.addTarget(ireader.getSurface());
-                crequestbuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, Math.min(max_exp, 1000000000L));
-                crequestbuilder.set(CaptureRequest.SENSOR_SENSITIVITY, max_analog);
+                crequestbuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
+                crequestbuilder.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
                 crequestbuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
                 crequestbuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
                 crequestbuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
@@ -268,11 +241,15 @@ public class Camera {
                 crequestbuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
                 crequestbuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
                 crequestbuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
+                App.log().append("Starting camera!\n");
+                ireader.acquireLatestImage();
+
+                App.log().append("camera initialization has succeeded.\n");
+
+                csession.setRepeatingRequest(crequestbuilder.build(), captureCallback, chandler);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
-            App.log().append("camera initialization has succeeded.\n");
-            init = true;
         }
 
         @Override
@@ -287,26 +264,32 @@ public class Camera {
     };
 
     public void start(Frame.OnFrameCallback callback) {
-        if(init) {
-            App.log().append("Starting camera!\n");
-            fcallback = callback;
-            ireader.acquireLatestImage();
 
-            iso = crequestbuilder.get(CaptureRequest.SENSOR_SENSITIVITY);
-            exposure = crequestbuilder.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
+        fcallback = callback;
+        num_frames = new AtomicInteger();
 
-            try {
-                csession.setRepeatingRequest(crequestbuilder.build(), captureCallback, chandler);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-            }
+        iso = max_analog;
+        exposure = Math.min(max_exp, 1000000000L);
+
+        cthread = new HandlerThread("Camera");
+        cthread.start();
+        chandler = new Handler(cthread.getLooper());
+
+        try {
+            cmanager.openCamera(cid, deviceCallback, chandler);
+        } catch (CameraAccessException| SecurityException e) {
+            e.printStackTrace();
         }
+
     }
 
     public void stop() {
+        csession.close();
+        cdevice.close();
+        cthread.quitSafely();
         try {
-            csession.stopRepeating();
-        } catch (CameraAccessException e) {
+            cthread.join();
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }

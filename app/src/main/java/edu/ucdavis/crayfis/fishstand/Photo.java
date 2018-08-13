@@ -14,9 +14,6 @@ public class Photo implements Analysis {
     public void Init() {
     }
 
-    public void Next(CaptureRequest.Builder request) {
-    }
-
     public void ProcessImage(Image img) {
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();

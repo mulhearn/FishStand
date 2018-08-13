@@ -42,19 +42,20 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     private final BroadcastReceiver state_change_receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
-            switch (new_state) {
-                case RUNNING:
-                    Run();
-                    break;
-                case STOPPING:
-                    Stop();
-                    break;
-                case READY:
-                    // without repeat, we must be destroying the service
-                    if(!repeat) broadcast_manager.unregisterReceiver(state_change_receiver);
-            }
-            App.getMessage().updateState();
+            final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
+            App.getHandler().post(new Runnable() {
+                @Override
+                public void run() {
+                    switch (new_state) {
+                        case RUNNING:
+                            Run();
+                            break;
+                        case STOPPING:
+                            Stop();
+                            break;
+                    }
+                }
+            });
         }
     };
 
@@ -62,7 +63,8 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     private String job_tag;
     private int num;
-    private Boolean repeat;
+    private boolean repeat;
+    private boolean run_finished; // to make sure we can still exit with stop button
     private int delay;
     private Boolean delay_applied;  // has the initial delay already been applied?
 
@@ -78,12 +80,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand called");
 
-        if (App.getAppState() != App.STATE.READY){
-            Log.i(TAG, "could not start DAQ service, state is not READY");
-        }
-
         delay_applied = false;
-        App.updateState(App.STATE.RUNNING);
         showNotification();
         Toast.makeText(this, "DAQ Started.", Toast.LENGTH_SHORT).show();
 
@@ -92,15 +89,13 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     @Override
     public void onDestroy(){
-        repeat = false;
-        App.updateState(App.STATE.STOPPING);
-
         stopForeground(true);
+        broadcast_manager.unregisterReceiver(state_change_receiver);
     }
 
     // Required notification for running service in Foreground:
     public interface NOTIFICATION_ID {
-        public static int FOREGROUND_SERVICE = 101;
+        int FOREGROUND_SERVICE = 101;
     }
 
     private void showNotification() {
@@ -142,6 +137,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
         App.getConfig().parseConfig();
         App.getConfig().logConfig();
 
+        run_finished = false;
         events = new AtomicInteger();
 
         job_tag = App.getConfig().getString("tag", "unspecified");
@@ -150,12 +146,11 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
         repeat  = App.getConfig().getBoolean("repeat", false);
         String analysis_name = App.getConfig().getString("analysis", "");
 
-        String logstr =  "analysis:       " + analysis_name + "\n";
-        logstr += "num of images:  " + num + "\n";
-        logstr += "repeat mode:    " + repeat + "\n";
-        logstr += "job tag:        " + job_tag + "\n";
-        logstr += "delay:          " + delay + "\n";
-        App.log().append(logstr);
+        App.log().append("analysis:       " + analysis_name + "\n")
+                .append("num of images:  " + num + "\n")
+                .append("repeat mode:    " + repeat + "\n")
+                .append("job tag:        " + job_tag + "\n")
+                .append("delay:          " + delay + "\n");
 
         switch (analysis_name.toLowerCase()) {
             case "pixelstats":
@@ -180,15 +175,10 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             delay_applied = true;
         }
 
-        if (analysis != null){
-            analysis.Next(App.getCamera().crequestbuilder);
-        }
-
         App.getCamera().start(this);
     }
 
     private void Stop() {
-        Log.d(TAG, "Stop()");
         App.log().append("run stopping\n");
         App.getCamera().stop();
 
@@ -196,9 +186,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             analysis.ProcessRun();
         }
 
-        String summary = "";
-        summary += "events:   " + events.intValue() + "\n";
-        App.log().append(summary);
+        App.log().append("events:   " + events.intValue() + "\n");
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
@@ -209,7 +197,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                 .putInt("run_num", run_num)
                 .commit();
 
-        if (repeat) {
+        if (repeat && run_finished) {
             if(checkBatteryPct(MIN_BATTERY_PCT)) {
                 App.updateState(App.STATE.RUNNING);
                 return;
@@ -226,11 +214,11 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                     }
                 }
             };
-            // we should resume immediately if we have charge, so no delay
-            idleTimer.scheduleAtFixedRate(idleTimerTask, 0, BATTERY_CHECK_TIME);
+            idleTimer.scheduleAtFixedRate(idleTimerTask, BATTERY_CHECK_TIME, BATTERY_CHECK_TIME);
+            App.updateState(App.STATE.CHARGING);
+        } else {
+            App.updateState(App.STATE.READY);
         }
-
-        App.updateState(App.STATE.READY);
 
     }
 
@@ -268,6 +256,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
         if (num_frames == num + 1) {
             frame.image.close();
+            run_finished = true;
             App.updateState(App.STATE.STOPPING);
         } else if(num_frames <= num) {
             try {
