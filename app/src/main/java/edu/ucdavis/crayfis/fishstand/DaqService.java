@@ -12,6 +12,8 @@ import android.graphics.BitmapFactory;
 import android.hardware.camera2.CaptureResult;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
@@ -38,12 +40,15 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     Analysis analysis;
 
+    Handler broadcast_handler;
+    HandlerThread broadcast_thread;
+
     private LocalBroadcastManager broadcast_manager;
     private final BroadcastReceiver state_change_receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
-            App.getHandler().post(new Runnable() {
+            broadcast_handler.post(new Runnable() {
                 @Override
                 public void run() {
                     switch (new_state) {
@@ -76,6 +81,10 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     @Override
     public void onCreate() {
+        broadcast_thread = new HandlerThread("Broadcasts");
+        broadcast_thread.start();
+        broadcast_handler = new Handler(broadcast_thread.getLooper());
+
         broadcast_manager = LocalBroadcastManager.getInstance(this);
         broadcast_manager.registerReceiver(state_change_receiver, new IntentFilter(App.ACTION_STATE_CHANGE));
     }
@@ -95,6 +104,12 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     public void onDestroy(){
         stopForeground(true);
         broadcast_manager.unregisterReceiver(state_change_receiver);
+        broadcast_thread.quitSafely();
+        try {
+            broadcast_thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     // Required notification for running service in Foreground:

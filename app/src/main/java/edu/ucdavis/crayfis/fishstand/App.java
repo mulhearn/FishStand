@@ -40,7 +40,6 @@ public class App extends Application {
         logfile.setUpdate(new Runnable(){public void run(){message.updateLog();};});
         camera = null;
         config = null;
-        handler = null;
     }
     // The singleton application context:
     private Context context;
@@ -55,17 +54,6 @@ public class App extends Application {
 
     private LogFile logfile;
     static public LogFile log(){ return instance.logfile; }
-
-    private Handler handler;
-    private HandlerThread handler_thread;
-    static public Handler getHandler(){
-        if (instance.handler == null){
-            instance.handler_thread = new HandlerThread("Background thread");
-            instance.handler_thread.start();
-            instance.handler = new Handler(instance.handler_thread.getLooper());
-        }
-        return instance.handler;
-    }
 
     private RenderScript rs;
     public static RenderScript getRenderScript() {
