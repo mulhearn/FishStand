@@ -68,6 +68,10 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     private int delay;
     private Boolean delay_applied;  // has the initial delay already been applied?
 
+    private long last_exposure;
+    private long last_duration;
+    private int last_iso;
+
     public static final String TAG = "DaqService";
 
     @Override
@@ -248,11 +252,18 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                         .append("pixel stride: " + frame.image.getPlanes()[0].getPixelStride() + "\n");
             case 1:
                 App.log().append("Frame acquired \n");
-            case 0:
-                Long exp = frame.result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-                Long dur = frame.result.get(CaptureResult.SENSOR_FRAME_DURATION);
-                Integer iso = frame.result.get(CaptureResult.SENSOR_SENSITIVITY);
-                App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
+        }
+
+        Long exp = frame.result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Long dur = frame.result.get(CaptureResult.SENSOR_FRAME_DURATION);
+        Integer iso = frame.result.get(CaptureResult.SENSOR_SENSITIVITY);
+
+        if(exp != null && dur != null && iso != null &&
+                (exp != last_exposure || dur != last_duration || iso != last_iso)) {
+            last_exposure = exp;
+            last_duration = dur;
+            last_iso = iso;
+            App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
         }
 
         if (num_frames == num + 1) {
