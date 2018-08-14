@@ -23,7 +23,14 @@ public class Cosmics implements Analysis {
     private Allocation abuf;
     private Allocation ahist;
     private static char max_hist = 1023;
+    private Allocation ax;
+    private Allocation ay;
+    private Allocation aval;
+    private Allocation an;
+    private static final int MAX_N = 120;
     private ScriptC_cosmics script;
+
+    private int THRESH = 1000;
 
     public Cosmics() {
 
@@ -43,7 +50,18 @@ public class Cosmics implements Analysis {
 
         abuf = Allocation.createTyped(rs, type16);
         ahist = Allocation.createSized(rs, Element.U64(rs), max_hist+1, Allocation.USAGE_SCRIPT);
+        ax = Allocation.createSized(rs, Element.U32(rs), MAX_N, Allocation.USAGE_SCRIPT);
+        ay = Allocation.createSized(rs, Element.U32(rs), MAX_N, Allocation.USAGE_SCRIPT);
+        aval = Allocation.createSized(rs, Element.U16(rs), MAX_N, Allocation.USAGE_SCRIPT);
+        an = Allocation.createSized(rs, Element.U32(rs), 1, Allocation.USAGE_SCRIPT);
+
         script.bind_gHist(ahist);
+        script.bind_gPixX(ax);
+        script.bind_gPixY(ay);
+        script.bind_gPixVal(aval);
+        script.bind_gPixN(an);
+        script.set_gMaxN(MAX_N);
+        script.set_gThresh(THRESH);
     }
 
     public void ProcessImage(Image img) {
@@ -64,6 +82,22 @@ public class Cosmics implements Analysis {
         synchronized (abuf) {
             abuf.copyFromUnchecked(vals);
             script.forEach_histogram(abuf);
+            int[] pixN = new int[1];
+            an.copyTo(pixN);
+            Log.d(TAG, "pixN = " + pixN[0]);
+            if(pixN[0] > 0) {
+                int[] pixX = new int[pixN[0]];
+                int[] pixY = new int[pixN[0]];
+                int[] pixVal = new int[pixN[0]];
+                ax.copy1DRangeToUnchecked(0, pixN[0], pixX);
+                ay.copy1DRangeToUnchecked(0, pixN[0], pixY);
+                aval.copy1DRangeToUnchecked(0, pixN[0], pixVal);
+
+                for(int i=0; i<pixN[0]; i++) {
+                    App.log().append("(" + pixX[i] + ", " + pixY[i] + "): " + pixVal[i] + "\n");
+                }
+                script.invoke_reset();
+            }
         }
     }
 
