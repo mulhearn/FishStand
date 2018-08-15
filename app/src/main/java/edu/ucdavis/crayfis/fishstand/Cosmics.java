@@ -1,6 +1,5 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
@@ -10,7 +9,6 @@ import android.util.Pair;
 
 import java.io.DataOutputStream;
 import java.io.OutputStream;
-import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,9 +20,11 @@ public class Cosmics implements Analysis {
 
     private AtomicInteger images = new AtomicInteger();
 
+    private final boolean YUV = App.getConfig().getBoolean("yuv", false);
+    private final int MAX_HIST = YUV ? 255 : 1023;
+
     private Allocation abuf;
     private Allocation ahist;
-    private static final int MAX_HIST = App.getConfig().getBoolean("yuv", false) ? 255 : 1023;
     private Allocation ax;
     private Allocation ay;
     private Allocation aval;
@@ -45,7 +45,7 @@ public class Cosmics implements Analysis {
     private ArrayList<Pair<Integer, Integer>> hotXY = new ArrayList<>();
 
     private static final double PASS_RATE = .1;
-    private static int thresh = MAX_HIST;
+    private static int thresh = 1023;
 
     public Cosmics() {
 
@@ -55,7 +55,9 @@ public class Cosmics implements Analysis {
         RenderScript rs = App.getRenderScript();
         script = new ScriptC_cosmics(rs);
 
-        abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
+        Element bufElement = App.getConfig().getBoolean("yuv", false)
+                ? Element.U8(rs) : Element.U16(rs);
+        abuf = Allocation.createTyped(rs, new Type.Builder(rs, bufElement)
                 .setX(nx)
                 .setY(ny)
                 .create());
@@ -94,28 +96,22 @@ public class Cosmics implements Analysis {
         App.log().append("thresh: " + thresh + "\n");
     }
 
-    public void ProcessImage(Image img) {
+    public void ProcessFrame(Camera.Frame frame) {
         images.incrementAndGet();
 
-        Image.Plane plane = img.getPlanes()[0];
-        ShortBuffer buf = plane.getBuffer().asShortBuffer();
-
-        final short[] vals;
-        if(buf.hasArray()) {
-            vals = buf.array();
-        } else {
-            vals = new short[buf.capacity()];
-            buf.get(vals);
-            buf.rewind();
-        }
+        final Object valsArray = frame.getArrayBuf();
 
         final int pixN;
         synchronized (abuf) {
-            abuf.copyFromUnchecked(vals);
+            abuf.copyFromUnchecked(valsArray);
+
+            // RS doesn't seem to allow overloading
             if(aweights == null) {
-                script.forEach_histogram(abuf);
+                if(YUV) script.forEach_histogram_YUV(abuf);
+                else script.forEach_histogram_RAW(abuf);
             } else {
-                script.forEach_weighted_histogram(abuf, aweights);
+                if(YUV) script.forEach_weighted_histogram_YUV(abuf, aweights);
+                else script.forEach_weighted_histogram_RAW(abuf, aweights);
             }
             final int[] pixNcontainer = new int[1];
             an.copyTo(pixNcontainer);

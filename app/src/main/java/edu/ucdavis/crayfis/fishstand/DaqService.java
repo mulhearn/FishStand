@@ -285,15 +285,13 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
         switch (verbosity) {
             case 2:
-                App.log().append("row stride: " + frame.image.getPlanes()[0].getRowStride() + "\n")
-                        .append("pixel stride: " + frame.image.getPlanes()[0].getPixelStride() + "\n");
             case 1:
                 App.log().append("Frame acquired \n");
         }
 
-        Long exp = frame.result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-        Long dur = frame.result.get(CaptureResult.SENSOR_FRAME_DURATION);
-        Integer iso = frame.result.get(CaptureResult.SENSOR_SENSITIVITY);
+        Long exp = frame.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Long dur = frame.get(CaptureResult.SENSOR_FRAME_DURATION);
+        Integer iso = frame.get(CaptureResult.SENSOR_SENSITIVITY);
 
         if(exp != null && dur != null && iso != null &&
                 (exp != last_exposure || dur != last_duration || iso != last_iso)) {
@@ -304,7 +302,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
         }
 
         if (num_frames == num + 1) {
-            frame.image.close();
+            frame.close();
             run_finished = true;
             App.updateState(App.STATE.STOPPING);
         } else if(num_frames <= num) {
@@ -313,11 +311,11 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                     @Override
                     public void run() {
                         if (analysis != null){
-                            analysis.ProcessImage(frame.image);
+                            analysis.ProcessFrame(frame);
                         }
 
                         try {
-                            frame.image.close();
+                            frame.close();
                         } catch (IllegalStateException e) {
                             Log.e(TAG,"Image close failure.");
                             return;
@@ -333,7 +331,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             } catch (IllegalStateException e) {
                 Log.e(TAG, "Failed to start image processing thread.");
                 try {
-                    frame.image.close();
+                    frame.close();
                 } catch (IllegalStateException e2) {
                     Log.e(TAG, "Image close failure.");
                 }

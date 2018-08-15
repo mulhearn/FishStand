@@ -1,6 +1,5 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
@@ -9,7 +8,6 @@ import android.util.Log;
 
 import java.io.DataOutputStream;
 import java.io.OutputStream;
-import java.nio.ShortBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PixelStats implements Analysis {
@@ -20,6 +18,8 @@ public class PixelStats implements Analysis {
 
     private AtomicInteger images = new AtomicInteger();
     private int num_pixels;
+
+    private final boolean YUV = App.getConfig().getBoolean("yuv", false);
 
     private Allocation abuf;
     private Allocation sum;
@@ -37,7 +37,8 @@ public class PixelStats implements Analysis {
 
         RenderScript rs = App.getRenderScript();
 
-        Type type16 = new Type.Builder(rs, Element.U16(rs))
+        Element bufElement = YUV ? Element.U8(rs) : Element.U16(rs);
+        Type typeBuf = new Type.Builder(rs, bufElement)
                 .setX(nx)
                 .setY(ny)
                 .create();
@@ -52,7 +53,7 @@ public class PixelStats implements Analysis {
                 .setY(ny)
                 .create();
 
-        abuf = Allocation.createTyped(rs, type16);
+        abuf = Allocation.createTyped(rs, typeBuf);
         sum = Allocation.createTyped(rs, type32);
         ssq = Allocation.createTyped(rs, type64);
 
@@ -63,25 +64,16 @@ public class PixelStats implements Analysis {
         App.log().append("finished allocating memory.\n");
     }
 
-    public void ProcessImage(Image img) {
+    public void ProcessFrame(Camera.Frame frame) {
         images.incrementAndGet();
 
-        Image.Plane iplane = img.getPlanes()[0];
-        ShortBuffer buf = iplane.getBuffer().asShortBuffer();
-
-        final short[] vals;
-        if(buf.hasArray()) {
-            vals = buf.array();
-        } else {
-            vals = new short[buf.capacity()];
-            buf.get(vals);
-            buf.rewind();
-        }
+        final Object valsArray = frame.getArrayBuf();
 
         synchronized (abuf) {
             if(abuf != null) {
-                abuf.copyFromUnchecked(vals);
-                script.forEach_add(abuf);
+                abuf.copyFromUnchecked(valsArray);
+                if(YUV) script.forEach_add_YUV(abuf);
+                else script.forEach_add_RAW(abuf);
             }
         }
     }

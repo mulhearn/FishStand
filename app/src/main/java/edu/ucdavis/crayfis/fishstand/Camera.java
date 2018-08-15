@@ -1,5 +1,7 @@
 package edu.ucdavis.crayfis.fishstand;
 
+import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
@@ -187,11 +189,10 @@ public class Camera {
     }
 
     private void create_session() {
-        //summary += "stage1 init success\n";
-        // check camera open?  Or at least non-null?
         App.log().append("Creating capture session\n");
         if(App.getConfig().getBoolean("yuv", false)) {
             App.log().append("Using YUV.\n");
+            // this would be more efficient copying straight to an Allocation, but this would complicate the polymorphism
             ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.YUV_420_888, max_images);
         } else {
             App.log().append("Using RAW.\n");
@@ -367,12 +368,41 @@ public class Camera {
 
     public static class Frame {
 
-        public final Image image;
-        public final TotalCaptureResult result;
+        private final Image image;
+        private final TotalCaptureResult result;
 
         private Frame(Image image, TotalCaptureResult result) {
             this.image = image;
             this.result = result;
+        }
+
+        public Image getImage() {
+            return image;
+        }
+
+        public <T> T get(CaptureResult.Key<T> key) {
+            return result.get(key);
+        }
+
+        public Object getArrayBuf() {
+            Image.Plane iplane = image.getPlanes()[0];
+            ByteBuffer buf = iplane.getBuffer();
+            if (image.getFormat() == ImageFormat.RAW_SENSOR) {
+                ShortBuffer shortBuffer = buf.asShortBuffer();
+                if(shortBuffer.hasArray()) return shortBuffer.array();
+                short[] vals = new short[shortBuffer.capacity()];
+                shortBuffer.get(vals);
+                return vals;
+            }
+
+            if (buf.hasArray()) return buf.array();
+            byte[] vals = new byte[buf.capacity()];
+            buf.get(vals);
+            return vals;
+        }
+
+        public void close() {
+            image.close();
         }
 
         private static class Builder {

@@ -11,7 +11,9 @@ import java.nio.ByteBuffer;
 public class Photo implements Analysis {
     //public static final String TAG = "Photo";
 
-    public void ProcessImage(Image img) {
+    // FIXME: this doesn't work with YUV and would be better in RS.  Low priority though.
+    public void ProcessFrame(Camera.Frame frame) {
+        Image img = frame.getImage();
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();
 
