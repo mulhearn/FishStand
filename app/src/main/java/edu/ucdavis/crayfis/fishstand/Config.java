@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.support.v4.content.FileProvider;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -85,6 +86,9 @@ public class Config {
         PackageManager packageManager = context.getPackageManager();
         if (intent.resolveActivity(packageManager) != null) {
             context.startActivity(intent);
+        } else {
+            Toast.makeText(App.getContext(), "No text editor found", Toast.LENGTH_LONG)
+                    .show();
         }
     }
 
