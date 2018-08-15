@@ -1,6 +1,8 @@
 package edu.ucdavis.crayfis.fishstand;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -12,10 +14,12 @@ import android.graphics.BitmapFactory;
 import android.hardware.camera2.CaptureResult;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
+import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.widget.Toast;
@@ -81,6 +85,8 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     @Override
     public void onCreate() {
+        Log.i(TAG, "onCreate");
+
         broadcast_thread = new HandlerThread("Broadcasts");
         broadcast_thread.start();
         broadcast_handler = new Handler(broadcast_thread.getLooper());
@@ -91,17 +97,18 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(TAG, "onStartCommand called");
+        Log.i(TAG, "onStartCommand");
 
         delay_applied = false;
         showNotification();
-        Toast.makeText(this, "DAQ Started.", Toast.LENGTH_SHORT).show();
 
         return START_STICKY;
     }
 
     @Override
     public void onDestroy(){
+        Log.i(TAG, "onDestroy");
+
         stopForeground(true);
         broadcast_manager.unregisterReceiver(state_change_receiver);
         broadcast_thread.quitSafely();
@@ -113,30 +120,45 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     }
 
     // Required notification for running service in Foreground:
-    public interface NOTIFICATION_ID {
-        int FOREGROUND_SERVICE = 101;
+    public interface NOTIFICATIONS {
+        int FOREGROUND_ID = 101;
+        String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand";
+        String CHANNEL_NAME = "FishStand DAQ";
     }
 
     private void showNotification() {
+
+        /*
         Intent notificationIntent = new Intent(this, MainActivity.class);
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
                 notificationIntent, 0);
+        */
 
         Bitmap icon = BitmapFactory.decodeResource(getResources(),
                 R.mipmap.ic_launcher);
 
-        Notification notification = new Notification.Builder(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel notificationChannel
+                    = new NotificationChannel(NOTIFICATIONS.CHANNEL_ID, NOTIFICATIONS.CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_LOW);
+
+            NotificationManager manager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+            manager.createNotificationChannel(notificationChannel);
+        }
+
+        Notification notification = new NotificationCompat.Builder(this, NOTIFICATIONS.CHANNEL_ID)
                 .setContentTitle("FishStand Cosmics")
                 .setTicker("FishStand Cosmics")
                 .setContentText("Cosmics running is underway")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
-                .setContentIntent(pendingIntent)
+                //.setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build();
-        startForeground(NOTIFICATION_ID.FOREGROUND_SERVICE,
+
+        startForeground(NOTIFICATIONS.FOREGROUND_ID,
                 notification);
 
     }
