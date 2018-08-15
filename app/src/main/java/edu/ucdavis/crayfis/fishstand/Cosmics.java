@@ -75,6 +75,7 @@ public class Cosmics implements Analysis {
 
         //hotXY.add(new Pair<>(1243, 924));
         //hotXY.add(new Pair<>(1243, 923));
+        //hotXY.add(new Pair<>(1165, 741));
 
         if(hotXY.size() > 0) {
             aweights = Allocation.createTyped(rs, new Type.Builder(rs, Element.F16(rs))
@@ -136,7 +137,7 @@ public class Cosmics implements Analysis {
             pixX.add((short)pix_x_evt[i]);
             pixY.add((short)pix_y_evt[i]);
             pixVal.add((short)pix_val_evt[i]);
-            Log.d(TAG,"(" + pix_x_evt[i] + ", " + pix_y_evt[i] + "): " + pix_val_evt[i] + "\n");
+            Log.i(TAG,"(" + pix_x_evt[i] + ", " + pix_y_evt[i] + "): " + pix_val_evt[i] + "\n");
         }
     }
 
@@ -146,13 +147,15 @@ public class Cosmics implements Analysis {
                 .append("run exposure:     " + App.getCamera().getExposure() + "\n")
                 .append("run sensitivity:  " + App.getCamera().getISO() + "\n");
 
-        long[] hist_array = new long[ahist.getBytesSize()/8];
-        ahist.copyTo(hist_array);
+        long[] hist_array = new long[ahist.getBytesSize() / 8];
+
+        synchronized (abuf) {
+            ahist.copyTo(hist_array);
+        }
 
         long sum = 0;
         long pix = 0;
         int target_pix = (int) (PASS_RATE*images.intValue());
-        Log.d(TAG, "target = " + target_pix);
 
         boolean new_thresh = false;
         for(int i=hist_array.length-1; i>=0; i--) {
@@ -162,7 +165,7 @@ public class Cosmics implements Analysis {
                 thresh = i;
                 new_thresh = true;
             }
-            Log.d(TAG, "hist[" + i + "] = " + hist_array[i] + " total = " + pix);
+            //Log.d(TAG, "hist[" + i + "] = " + hist_array[i] + " total = " + pix);
         }
         App.log().append("Mean: " + sum / (double)pix + "\n");
 

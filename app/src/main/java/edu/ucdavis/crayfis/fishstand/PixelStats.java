@@ -79,21 +79,28 @@ public class PixelStats implements Analysis {
         }
 
         synchronized (abuf) {
-            abuf.copyFromUnchecked(vals);
-            script.forEach_add(abuf);
+            if(abuf != null) {
+                abuf.copyFromUnchecked(vals);
+                script.forEach_add(abuf);
+            }
         }
     }
 
     public void ProcessRun() {
-        abuf.destroy();
 
         final int[] sum_buf = new int[num_pixels];
-        sum.copyTo(sum_buf);
-        sum.destroy();
-
         final long[] ssq_buf = new long[num_pixels];
-        ssq.copyTo(ssq_buf);
-        ssq.destroy();
+
+        synchronized (abuf) {
+            abuf.destroy();
+            abuf = null;
+
+            sum.copyTo(sum_buf);
+            sum.destroy();
+
+            ssq.copyTo(ssq_buf);
+            ssq.destroy();
+        }
 
         if (FILE_SIZE > 0) {
             WriteOutput(sum_buf, ssq_buf, images.intValue());
