@@ -97,7 +97,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
         showNotification();
         Toast.makeText(this, "DAQ Started.", Toast.LENGTH_SHORT).show();
 
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
 
     @Override
@@ -200,7 +200,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     private void Stop() {
         App.log().append("run stopping\n");
-        App.getCamera().stop();
+        App.getCamera().stop(!repeat);
 
         if (analysis != null){
             analysis.ProcessRun();

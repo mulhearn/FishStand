@@ -4,6 +4,8 @@ import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -41,9 +43,12 @@ public class Camera {
     private CameraCharacteristics cchars;
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
-    private CaptureRequest.Builder crequestbuilder;
+    
     private HandlerThread cthread;
     private Handler chandler;
+    
+    private HandlerThread fthread;
+    private Handler fhandler;
 
     private ImageReader ireader;
     private final Frame.Builder fbuilder = new Frame.Builder();
@@ -62,6 +67,8 @@ public class Camera {
     private Size raw_size;
     private int iso;
     private long exposure;
+
+    private AtomicInteger nActiveFrames = new AtomicInteger();
 
 
     public Camera() {
@@ -179,7 +186,7 @@ public class Camera {
         }
     }
 
-    private void init_stage2() {
+    private void create_session() {
         //summary += "stage1 init success\n";
         // check camera open?  Or at least non-null?
         App.log().append("Creating capture session\n");
@@ -192,7 +199,7 @@ public class Camera {
         }
         List<Surface> outputs = new ArrayList<Surface>(1);
         outputs.add(ireader.getSurface());
-        ireader.setOnImageAvailableListener(imageCallback, chandler);
+        ireader.setOnImageAvailableListener(imageCallback, fhandler);
         try {
             cdevice.createCaptureSession(outputs, sessionCallback, chandler);
         } catch (CameraAccessException e) {
@@ -208,16 +215,33 @@ public class Camera {
             //This is called when the camera is open
             cdevice = camera;
             App.log().append("Camera is open.\n");
-            init_stage2();
+            create_session();
         }
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
             App.log().append("Camera is closed.\n");
+            cthread.quitSafely();
+            fthread.quitSafely();
+            try {
+                cthread.join();
+                fthread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             cdevice.close();
+            cdevice = null;
         }
         @Override
         public void onError(@NonNull CameraDevice camera, int error) {
             App.log().append("Camera in error! " + error + "\n");
+            cthread.quitSafely();
+            fthread.quitSafely();
+            try {
+                cthread.join();
+                fthread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             cdevice.close();
             cdevice = null;
         }
@@ -229,24 +253,25 @@ public class Camera {
             App.log().append("Camera capture session configured.\n");
             csession = session;
             try {
-                crequestbuilder = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                crequestbuilder.addTarget(ireader.getSurface());
-                crequestbuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
-                crequestbuilder.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-                crequestbuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-                crequestbuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-                crequestbuilder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
-                crequestbuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
-                crequestbuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
-                crequestbuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
-                crequestbuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
-                crequestbuilder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
+                CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                b.addTarget(ireader.getSurface());
+                b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
+                b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
+                b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+                b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+                b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
+                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
+                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
+                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
+                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
+                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
                 App.log().append("Starting camera!\n");
-                ireader.acquireLatestImage();
+                Image img = ireader.acquireLatestImage();
+                if(img != null) img.close();
 
                 App.log().append("camera initialization has succeeded.\n");
 
-                csession.setRepeatingRequest(crequestbuilder.build(), captureCallback, chandler);
+                csession.setRepeatingRequest(b.build(), captureCallback, fhandler);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -271,26 +296,35 @@ public class Camera {
         iso = max_analog;
         exposure = Math.min(max_exp, 1000000000L);
 
-        cthread = new HandlerThread("Camera");
-        cthread.start();
-        chandler = new Handler(cthread.getLooper());
+        if(cthread == null || !cthread.isAlive()) {
+            cthread = new HandlerThread("Camera");
+            cthread.start();
+            chandler = new Handler(cthread.getLooper());
+        }
+        if(fthread == null || !fthread.isAlive()) {
+            fthread = new HandlerThread("Frames");
+            fthread.start();
+            fhandler = new Handler(fthread.getLooper());
+        }
 
-        try {
-            cmanager.openCamera(cid, deviceCallback, chandler);
-        } catch (CameraAccessException| SecurityException e) {
-            e.printStackTrace();
+        if(cdevice == null) {
+            try {
+                cmanager.openCamera(cid, deviceCallback, chandler);
+            } catch (CameraAccessException | SecurityException e) {
+                e.printStackTrace();
+            }
+        } else {
+            create_session();
         }
 
     }
 
-    public void stop() {
+    public void stop(boolean quit) {
         csession.close();
-        cdevice.close();
-        cthread.quitSafely();
-        try {
-            cthread.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        ireader.close();
+        if(quit) {
+            cdevice.close();
+            cdevice = null;
         }
     }
 
@@ -314,8 +348,7 @@ public class Camera {
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            Frame frame = fbuilder.setResult(result)
-                    .build();
+            Frame frame = fbuilder.addResult(result);
             if (frame != null) {
                 fcallback.onFrame(frame, num_frames.incrementAndGet());
             }
@@ -325,8 +358,7 @@ public class Camera {
     private final ImageReader.OnImageAvailableListener imageCallback = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader imageReader) {
-            Frame frame = fbuilder.setImage(imageReader.acquireLatestImage())
-                    .build();
+            Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
             if (frame != null) {
                 fcallback.onFrame(frame, num_frames.incrementAndGet());
             }
@@ -344,27 +376,37 @@ public class Camera {
         }
 
         private static class Builder {
-            private Image bImage;
-            private TotalCaptureResult bResult;
+            private Queue<Image> bImageQueue = new ArrayBlockingQueue<>(5);
+            private Queue<TotalCaptureResult> bResultQueue = new ArrayBlockingQueue<>(5);
 
-            private Builder setImage(Image image) {
-                bImage = image;
-                return this;
-            }
-
-            private Builder setResult(TotalCaptureResult result) {
-                bResult = result;
-                return this;
-            }
-
-            private synchronized Frame build() {
-                if(bImage != null && bResult != null) {
-                    Frame frame = new Frame(bImage, bResult);
-                    bImage = null;
-                    bResult = null;
-                    return frame;
+            private Frame addImage(Image image) {
+                while(bResultQueue.size() > 0) {
+                    TotalCaptureResult r = bResultQueue.poll();
+                    Long timestamp = r.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if(timestamp == image.getTimestamp()) {
+                        return new Frame(image, r);
+                    }
                 }
 
+                while(!bImageQueue.add(image)) {
+                    bImageQueue.poll().close();
+                }
+                return null;
+            }
+
+            private Frame addResult(TotalCaptureResult result) {
+                Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                if(timestamp == null) return null;
+                while(bImageQueue.size() > 0) {
+                    Image img = bImageQueue.poll();
+                    if(img.getTimestamp() == timestamp) {
+                        return new Frame(img, result);
+                    }
+                }
+
+                while(!bResultQueue.add(result)) {
+                    bResultQueue.poll();
+                }
                 return null;
             }
         }
