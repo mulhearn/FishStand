@@ -19,14 +19,19 @@ public class PixelStats implements Analysis {
     private AtomicInteger images = new AtomicInteger();
     private int num_pixels;
 
-    private final boolean YUV = App.getConfig().getBoolean("yuv", false);
+    private final boolean YUV;
 
     private Allocation abuf;
     private Allocation sum;
     private Allocation ssq;
     private ScriptC_pixelstats script;
 
-    public PixelStats() {
+    private final Config CONFIG;
+
+    public PixelStats(Config cfg) {
+
+        CONFIG = cfg;
+        YUV = CONFIG.getBoolean("yuv", false);
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();

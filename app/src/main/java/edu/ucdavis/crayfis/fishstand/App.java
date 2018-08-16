@@ -5,9 +5,6 @@ import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
 import android.renderscript.RenderScript;
 import android.support.v4.content.LocalBroadcastManager;
 
@@ -39,7 +36,6 @@ public class App extends Application {
         logfile = new LogFile();
         logfile.setUpdate(new Runnable(){public void run(){message.updateLog();};});
         camera = null;
-        config = null;
     }
     // The singleton application context:
     private Context context;
@@ -71,14 +67,6 @@ public class App extends Application {
         return instance.camera;
     }
 
-    private Config config;
-    static public Config getConfig(){
-        if (instance.config == null) {
-            instance.config = new Config();
-        }
-        return instance.config;
-    }
-
     // State of the DAQ:
     public enum STATE {
         RUNNING,   // A run is underway
@@ -89,16 +77,23 @@ public class App extends Application {
 
     public static final String ACTION_STATE_CHANGE = "state_change";
     public static final String EXTRA_NEW_STATE = "new_state";
+    public static final String EXTRA_CONFIG_FILE = "config_file";
+
     private STATE state = STATE.READY;
     public static STATE getAppState() {
         return instance.state;
     }
-    public static synchronized void updateState(STATE new_state) {
+    public static synchronized void updateState(STATE new_state, String filename) {
         instance.state = new_state;
         Intent intent = new Intent(ACTION_STATE_CHANGE);
         intent.putExtra(EXTRA_NEW_STATE, new_state);
+        if(filename != null)
+            intent.putExtra(EXTRA_CONFIG_FILE, filename);
         LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
         getMessage().updateState();
+    }
+    public static void updateState(STATE new_state) {
+        updateState(new_state, null);
     }
 
 }

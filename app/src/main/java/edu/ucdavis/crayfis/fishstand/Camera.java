@@ -66,11 +66,10 @@ public class Camera {
     private int max_sens=0;
     private int max_analog=0;
 
+    private boolean yuv;
     private Size raw_size;
     private int iso;
     private long exposure;
-
-    private AtomicInteger nActiveFrames = new AtomicInteger();
 
 
     public Camera() {
@@ -190,7 +189,7 @@ public class Camera {
 
     private void create_session() {
         App.log().append("Creating capture session\n");
-        if(App.getConfig().getBoolean("yuv", false)) {
+        if(yuv) {
             App.log().append("Using YUV.\n");
             // this would be more efficient copying straight to an Allocation, but this would complicate the polymorphism
             ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.YUV_420_888, max_images);
@@ -285,15 +284,16 @@ public class Camera {
 
         @Override
         public void onClosed(@NonNull CameraCaptureSession session) {
-            App.log().append("Camera capture session closed");
+            App.log().append("Camera capture session closed\n");
         }
     };
 
-    public void start(Frame.OnFrameCallback callback) {
+    public void start(Frame.OnFrameCallback callback, Config cfg) {
 
         fcallback = callback;
         num_frames = new AtomicInteger();
 
+        yuv = cfg.getBoolean("yuv", false);
         iso = max_analog;
         exposure = Math.min(max_exp, 1000000000L);
 

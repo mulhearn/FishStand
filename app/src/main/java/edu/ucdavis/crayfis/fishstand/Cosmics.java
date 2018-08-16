@@ -20,8 +20,9 @@ public class Cosmics implements Analysis {
 
     private AtomicInteger images = new AtomicInteger();
 
-    private final boolean YUV = App.getConfig().getBoolean("yuv", false);
-    private final int MAX_HIST = YUV ? 255 : 1023;
+    private final Config CONFIG;
+    private final boolean YUV;
+    private final int MAX_HIST;
 
     private Allocation abuf;
     private Allocation ahist;
@@ -47,7 +48,11 @@ public class Cosmics implements Analysis {
     private static final double PASS_RATE = .1;
     private static int thresh = 1023;
 
-    public Cosmics() {
+    public Cosmics(Config cfg) {
+
+        CONFIG = cfg;
+        YUV = CONFIG.getBoolean("yuv", false);
+        MAX_HIST = YUV ? 255 : 1023;
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
@@ -55,8 +60,7 @@ public class Cosmics implements Analysis {
         RenderScript rs = App.getRenderScript();
         script = new ScriptC_cosmics(rs);
 
-        Element bufElement = App.getConfig().getBoolean("yuv", false)
-                ? Element.U8(rs) : Element.U16(rs);
+        Element bufElement = YUV ? Element.U8(rs) : Element.U16(rs);
         abuf = Allocation.createTyped(rs, new Type.Builder(rs, bufElement)
                 .setX(nx)
                 .setY(ny)

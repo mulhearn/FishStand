@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -84,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
         stateUpdater = App.getMessage().onStateUpdate(new Runnable() {
             public void run() {
-                Button button = findViewById(R.id.button1);
+                Button button = findViewById(R.id.start_stop_btn);
                 TextView status = findViewById(R.id.status1);
 
                 SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
@@ -112,9 +113,7 @@ public class MainActivity extends AppCompatActivity {
         });
         App.getMessage().updateState();
 
-        Button button = findViewById(R.id.button2);
         TextView status = findViewById(R.id.status2);
-        button.setText("Config");
         status.setText("unused status line...");
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
@@ -137,10 +136,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onStartStopClicked(View v) {
+        EditText text = findViewById(R.id.config_name);
+        final String filename = text.getText().toString().trim();
+        if(!filename.endsWith(".cfg") && !filename.endsWith(".mac")) {
+            Toast.makeText(this, "Invalid file extension", Toast.LENGTH_LONG)
+                    .show();
+            return;
+        }
+
         switch (App.getAppState()) {
             case READY:
                 Log.i(TAG, "button starting run");
-                App.updateState(App.STATE.RUNNING);
+                App.updateState(App.STATE.RUNNING, filename);
                 break;
             case RUNNING:
                 Log.i(TAG, "button stopping run");
@@ -152,7 +159,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void onConfigClicked(View v) {
-        App.getConfig().editConfig(this);
+    public void onEditClicked(View v) {
+        EditText text = findViewById(R.id.config_name);
+        final String filename = text.getText().toString().trim();
+        if(!filename.endsWith(".cfg") && !filename.endsWith(".mac")) {
+            Toast.makeText(this, "Invalid file extension", Toast.LENGTH_LONG)
+                    .show();
+            return;
+        }
+
+        Config.editConfig(this, filename);
     }
 }

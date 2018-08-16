@@ -11,6 +11,12 @@ import java.nio.ByteBuffer;
 public class Photo implements Analysis {
     //public static final String TAG = "Photo";
 
+    private final Config CONFIG;
+
+    public Photo(Config cfg) {
+        CONFIG = cfg;
+    }
+
     // FIXME: this doesn't work with YUV and would be better in RS.  Low priority though.
     public void ProcessFrame(Camera.Frame frame) {
         Image img = frame.getImage();

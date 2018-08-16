@@ -21,7 +21,7 @@ public class LogFile {
         update.run();
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
-        String filename = "log_" + run_num + ".txt";
+        String filename = "run_" + run_num + ".log";
         OutputStream out = Storage.newOutput(filename);
         if (out == null){
             return;

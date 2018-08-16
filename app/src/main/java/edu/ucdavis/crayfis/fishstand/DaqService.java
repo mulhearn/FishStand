@@ -3,7 +3,6 @@ package edu.ucdavis.crayfis.fishstand;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -42,26 +41,59 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
     private static final float RESTART_BATTERY_PCT = .9f;
     private static final long BATTERY_CHECK_TIME = 600000L;
 
-    Analysis analysis;
+    private Macro macro;
 
-    Handler broadcast_handler;
-    HandlerThread broadcast_thread;
+    private Analysis analysis;
+
+    private Handler broadcast_handler;
+    private HandlerThread broadcast_thread;
 
     private LocalBroadcastManager broadcast_manager;
     private final BroadcastReceiver state_change_receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
+            final String config_name = intent.getStringExtra(App.EXTRA_CONFIG_FILE);
             broadcast_handler.post(new Runnable() {
                 @Override
                 public void run() {
                     switch (new_state) {
                         case RUNNING:
-                            Run();
+                            // try to load a macro if we aren't already in the middle of one
+                            if(macro == null) {
+                                if(config_name == null)
+                                    macro = Macro.create("default.mac");
+                                else if(config_name.endsWith(".mac"))
+                                    macro = Macro.create(config_name);
+                            }
+
+                            final Config cfg;
+
+                            if(macro != null && macro.hasNext()) {
+                                // first, try working with a macro file
+                                cfg = macro.next();
+                            } else {
+                                // otherwise, we must have a single config file
+                                try {
+                                    cfg = config_name == null ?
+                                            new Config("default.cfg") :
+                                            new Config(config_name);
+                                } catch (Exception e) {
+                                    Toast.makeText(DaqService.this,
+                                            "Invalid file content",
+                                            Toast.LENGTH_LONG)
+                                            .show();
+                                    App.updateState(App.STATE.READY);
+                                    return;
+                                }
+                            }
+                            Run(cfg);
                             break;
                         case STOPPING:
                             Stop();
                             break;
+                        case READY:
+                            macro = null;
                     }
                 }
             });
@@ -72,7 +104,6 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
     private String job_tag;
     private int num;
-    private boolean repeat;
     private boolean run_finished; // to make sure we can still exit with stop button
     private int delay;
     private Boolean delay_applied;  // has the initial delay already been applied?
@@ -169,39 +200,35 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
         return null;
     }
 
-    public void Run() {
+    public void Run(Config cfg) {
 
         int run_num = App.getPref().getInt("run_num", 0);
         App.log().newRun(run_num);
-
         App.log().append("init called.\n");
-        App.getConfig().parseConfig();
-        App.getConfig().logConfig();
+        cfg.logConfig();
 
         run_finished = false;
         events = new AtomicInteger();
 
-        job_tag = App.getConfig().getString("tag", "unspecified");
-        num     = App.getConfig().getInteger("num", 1);
-        delay   = App.getConfig().getInteger("delay", 0);
-        repeat  = App.getConfig().getBoolean("repeat", false);
-        String analysis_name = App.getConfig().getString("analysis", "");
+        job_tag = cfg.getString("tag", "unspecified");
+        num     = cfg.getInteger("num", 1);
+        delay   = cfg.getInteger("delay", 0);
+        String analysis_name = cfg.getString("analysis", "");
 
         App.log().append("analysis:       " + analysis_name + "\n")
                 .append("num of images:  " + num + "\n")
-                .append("repeat mode:    " + repeat + "\n")
                 .append("job tag:        " + job_tag + "\n")
                 .append("delay:          " + delay + "\n");
 
         switch (analysis_name.toLowerCase()) {
             case "pixelstats":
-                analysis = new PixelStats();
+                analysis = new PixelStats(cfg);
                 break;
             case "photo":
-                analysis = new Photo();
+                analysis = new Photo(cfg);
                 break;
             case "cosmics":
-                analysis = new Cosmics();
+                analysis = new Cosmics(cfg);
                 break;
 
             default:
@@ -217,12 +244,14 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
             delay_applied = true;
         }
 
-        App.getCamera().start(this);
+        App.getCamera().start(this, cfg);
     }
 
     private void Stop() {
         App.log().append("run stopping\n");
-        App.getCamera().stop(!repeat);
+
+        boolean restart = macro != null && macro.hasNext() && run_finished;
+        App.getCamera().stop(!restart);
 
         if (analysis != null){
             analysis.ProcessRun();
@@ -239,7 +268,7 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
                 .putInt("run_num", run_num)
                 .commit();
 
-        if (repeat && run_finished) {
+        if (restart) {
             if(checkBatteryPct(MIN_BATTERY_PCT)) {
                 App.updateState(App.STATE.RUNNING);
                 return;
