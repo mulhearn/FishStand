@@ -102,6 +102,14 @@ public class Config {
         return def;
     }
 
+    public long getLong(String param, long def) {
+        String str = getString(param, "");
+        if (!str.isEmpty()) {
+            return Long.parseLong(str);
+        }
+        return def;
+    }
+
     public static void editConfig(Context context, String filename) {
         Intent intent = new Intent(Intent.ACTION_EDIT);
         final Uri uri;
@@ -132,11 +140,13 @@ public class Config {
             writer.write("# config\n");
             writer.write("# Fishstand Run Configuration File\n");
             writer.write("# Created on Run " + date + "\n");
-            writer.write("tag initial\n");
-            writer.write("num 1\n");
-            writer.write("analysis none\n");
-            writer.write("delay 0\n");
-            writer.write("yuv false\n");
+            writer.write("tag           #name\n");
+            writer.write("analysis      #name\n");
+            writer.write("num           #int\n");
+            writer.write("sensitivity   #int\n");
+            writer.write("exposure      #ns\n");
+            writer.write("yuv           #bool\n");
+            writer.write("delay         #ms\n");
             writer.flush();
             writer.close();
         } catch (Exception e){
