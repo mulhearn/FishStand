@@ -8,6 +8,8 @@ import android.content.SharedPreferences;
 import android.renderscript.RenderScript;
 import android.support.v4.content.LocalBroadcastManager;
 
+import edu.ucdavis.crayfis.fishstand.camera.Camera;
+
 //
 //  App:  Application wide access to singletons via static functions, e.g.:
 //

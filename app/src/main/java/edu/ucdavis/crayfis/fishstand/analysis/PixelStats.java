@@ -1,4 +1,4 @@
-package edu.ucdavis.crayfis.fishstand;
+package edu.ucdavis.crayfis.fishstand.analysis;
 
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -9,6 +9,12 @@ import android.util.Log;
 import java.io.DataOutputStream;
 import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import edu.ucdavis.crayfis.fishstand.App;
+import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.camera.Frame;
+import edu.ucdavis.crayfis.fishstand.ScriptC_pixelstats;
+import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
@@ -21,7 +27,6 @@ public class PixelStats implements Analysis {
 
     private final boolean YUV;
 
-    private Allocation abuf;
     private Allocation sum;
     private Allocation ssq;
     private ScriptC_pixelstats script;
@@ -42,12 +47,6 @@ public class PixelStats implements Analysis {
 
         RenderScript rs = App.getRenderScript();
 
-        Element bufElement = YUV ? Element.U8(rs) : Element.U16(rs);
-        Type typeBuf = new Type.Builder(rs, bufElement)
-                .setX(nx)
-                .setY(ny)
-                .create();
-
         Type type32 = new Type.Builder(rs, Element.U32(rs))
                 .setX(nx)
                 .setY(ny)
@@ -58,7 +57,6 @@ public class PixelStats implements Analysis {
                 .setY(ny)
                 .create();
 
-        abuf = Allocation.createTyped(rs, typeBuf);
         sum = Allocation.createTyped(rs, type32);
         ssq = Allocation.createTyped(rs, type64);
 
@@ -69,17 +67,14 @@ public class PixelStats implements Analysis {
         App.log().append("finished allocating memory.\n");
     }
 
-    public void ProcessFrame(Camera.Frame frame) {
+    public void ProcessFrame(Frame frame) {
         images.incrementAndGet();
 
-        final Object valsArray = frame.getArrayBuf();
+        synchronized (this) {
+            Allocation buf = frame.asAllocation();
 
-        synchronized (abuf) {
-            if(abuf != null) {
-                abuf.copyFromUnchecked(valsArray);
-                if(YUV) script.forEach_add_YUV(abuf);
-                else script.forEach_add_RAW(abuf);
-            }
+            if (YUV) script.forEach_add_YUV(buf);
+            else script.forEach_add_RAW(buf);
         }
     }
 
@@ -88,9 +83,7 @@ public class PixelStats implements Analysis {
         final int[] sum_buf = new int[num_pixels];
         final long[] ssq_buf = new long[num_pixels];
 
-        synchronized (abuf) {
-            abuf.destroy();
-            abuf = null;
+        synchronized (this) {
 
             sum.copyTo(sum_buf);
             sum.destroy();

@@ -31,11 +31,17 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import edu.ucdavis.crayfis.fishstand.analysis.Analysis;
+import edu.ucdavis.crayfis.fishstand.analysis.Cosmics;
+import edu.ucdavis.crayfis.fishstand.analysis.Photo;
+import edu.ucdavis.crayfis.fishstand.analysis.PixelStats;
+import edu.ucdavis.crayfis.fishstand.camera.Frame;
+
 /**
  * Created by mulhearn on 4/28/18.
  */
 
-public class DaqService extends Service implements Camera.Frame.OnFrameCallback {
+public class DaqService extends Service implements Frame.OnFrameCallback {
 
     private static final float MIN_BATTERY_PCT = .3f;
     private static final float RESTART_BATTERY_PCT = .9f;
@@ -308,22 +314,17 @@ public class DaqService extends Service implements Camera.Frame.OnFrameCallback 
 
 
     @Override
-    public void onFrame(@NonNull final Camera.Frame frame, final int num_frames) {
+    public void onFrame(@NonNull final Frame frame, final int num_frames) {
 
         final int verbosity = getEventVerbosity(num_frames);
-
-        switch (verbosity) {
-            case 2:
-            case 1:
-                App.log().append("Frame acquired \n");
-        }
 
         Long exp = frame.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Long dur = frame.get(CaptureResult.SENSOR_FRAME_DURATION);
         Integer iso = frame.get(CaptureResult.SENSOR_SENSITIVITY);
 
         if(exp != null && dur != null && iso != null &&
-                (exp != last_exposure || dur != last_duration || iso != last_iso)) {
+                (exp != last_exposure || dur != last_duration || iso != last_iso)
+                || num_frames == 1) {
             last_exposure = exp;
             last_duration = dur;
             last_iso = iso;

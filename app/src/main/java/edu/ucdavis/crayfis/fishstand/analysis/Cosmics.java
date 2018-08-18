@@ -1,4 +1,4 @@
-package edu.ucdavis.crayfis.fishstand;
+package edu.ucdavis.crayfis.fishstand.analysis;
 
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -12,6 +12,12 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import edu.ucdavis.crayfis.fishstand.App;
+import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.camera.Frame;
+import edu.ucdavis.crayfis.fishstand.ScriptC_cosmics;
+import edu.ucdavis.crayfis.fishstand.Storage;
+
 public class Cosmics implements Analysis {
     private static final String TAG = "Cosmics";
 
@@ -24,7 +30,6 @@ public class Cosmics implements Analysis {
     private final boolean YUV;
     private final int MAX_HIST;
 
-    private Allocation abuf;
     private Allocation ahist;
     private Allocation ax;
     private Allocation ay;
@@ -60,11 +65,6 @@ public class Cosmics implements Analysis {
         RenderScript rs = App.getRenderScript();
         script = new ScriptC_cosmics(rs);
 
-        Element bufElement = YUV ? Element.U8(rs) : Element.U16(rs);
-        abuf = Allocation.createTyped(rs, new Type.Builder(rs, bufElement)
-                .setX(nx)
-                .setY(ny)
-                .create());
         ahist = Allocation.createSized(rs, Element.U64(rs), MAX_HIST+1, Allocation.USAGE_SCRIPT);
         ax = Allocation.createSized(rs, Element.U32(rs), MAX_N, Allocation.USAGE_SCRIPT);
         ay = Allocation.createSized(rs, Element.U32(rs), MAX_N, Allocation.USAGE_SCRIPT);
@@ -100,22 +100,20 @@ public class Cosmics implements Analysis {
         App.log().append("thresh: " + thresh + "\n");
     }
 
-    public void ProcessFrame(Camera.Frame frame) {
+    public void ProcessFrame(Frame frame) {
         images.incrementAndGet();
 
-        final Object valsArray = frame.getArrayBuf();
-
         final int pixN;
-        synchronized (abuf) {
-            abuf.copyFromUnchecked(valsArray);
+        synchronized (this) {
+            Allocation buf = frame.asAllocation();
 
             // RS doesn't seem to allow overloading
             if(aweights == null) {
-                if(YUV) script.forEach_histogram_YUV(abuf);
-                else script.forEach_histogram_RAW(abuf);
+                if(YUV) script.forEach_histogram_YUV(buf);
+                else script.forEach_histogram_RAW(buf);
             } else {
-                if(YUV) script.forEach_weighted_histogram_YUV(abuf, aweights);
-                else script.forEach_weighted_histogram_RAW(abuf, aweights);
+                if(YUV) script.forEach_weighted_histogram_YUV(buf, aweights);
+                else script.forEach_weighted_histogram_RAW(buf, aweights);
             }
             final int[] pixNcontainer = new int[1];
             an.copyTo(pixNcontainer);
@@ -149,7 +147,7 @@ public class Cosmics implements Analysis {
 
         long[] hist_array = new long[ahist.getBytesSize() / 8];
 
-        synchronized (abuf) {
+        synchronized (this) {
             ahist.copyTo(hist_array);
         }
 

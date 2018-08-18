@@ -1,12 +1,16 @@
-package edu.ucdavis.crayfis.fishstand;
+package edu.ucdavis.crayfis.fishstand.analysis;
 
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+
+import edu.ucdavis.crayfis.fishstand.App;
+import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.camera.Frame;
+import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Photo implements Analysis {
     //public static final String TAG = "Photo";
@@ -18,7 +22,7 @@ public class Photo implements Analysis {
     }
 
     // FIXME: this doesn't work with YUV and would be better in RS.  Low priority though.
-    public void ProcessFrame(Camera.Frame frame) {
+    public void ProcessFrame(Frame frame) {
         Image img = frame.getImage();
         Image.Plane iplane = img.getPlanes()[0];
         ByteBuffer buf = iplane.getBuffer();

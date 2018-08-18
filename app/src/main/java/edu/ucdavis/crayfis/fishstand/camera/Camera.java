@@ -1,19 +1,16 @@
-package edu.ucdavis.crayfis.fishstand;
+package edu.ucdavis.crayfis.fishstand.camera;
 
-import java.nio.ByteBuffer;
 import java.nio.ShortBuffer;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Queue;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 import android.content.Context;
 import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CameraManager;
@@ -27,12 +24,18 @@ import android.media.ImageReader;
 import android.graphics.ImageFormat;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.Type;
 import android.support.annotation.NonNull;
-import android.util.Log;
 import android.util.Range;
 import android.util.SizeF;
 import android.util.Size;
 import android.view.Surface;
+
+import edu.ucdavis.crayfis.fishstand.App;
+import edu.ucdavis.crayfis.fishstand.Config;
 
 
 public class Camera {
@@ -53,7 +56,10 @@ public class Camera {
     private Handler fhandler;
 
     private ImageReader ireader;
-    private final Frame.Builder fbuilder = new Frame.Builder();
+    private Allocation abuf;
+    private Surface surface;
+
+    private Frame.Builder fbuilder;
     private Frame.OnFrameCallback fcallback;
     private AtomicInteger num_frames;
 
@@ -189,17 +195,31 @@ public class Camera {
 
     private void create_session() {
         App.log().append("Creating capture session\n");
+        RenderScript rs = App.getRenderScript();
         if(yuv) {
             App.log().append("Using YUV.\n");
-            // this would be more efficient copying straight to an Allocation, but this would complicate the polymorphism
-            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.YUV_420_888, max_images);
+            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
+                    .setX(raw_size.getWidth())
+                    .setY(raw_size.getHeight())
+                    .setYuvFormat(ImageFormat.YUV_420_888)
+                    .create(),
+                    Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
+            surface = abuf.getSurface();
+            abuf.setOnBufferAvailableListener(bufferCallback);
         } else {
             App.log().append("Using RAW.\n");
             ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
+            surface = ireader.getSurface();
+            ireader.setOnImageAvailableListener(imageCallback, fhandler);
+            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
+                    .setX(raw_size.getWidth())
+                    .setY(raw_size.getHeight())
+                    .create(),
+                    Allocation.USAGE_SCRIPT);
         }
-        List<Surface> outputs = new ArrayList<Surface>(1);
-        outputs.add(ireader.getSurface());
-        ireader.setOnImageAvailableListener(imageCallback, fhandler);
+        fbuilder = new Frame.Builder(abuf);
+        List<Surface> outputs = new ArrayList<>(1);
+        outputs.add(surface);
         try {
             cdevice.createCaptureSession(outputs, sessionCallback, chandler);
         } catch (CameraAccessException e) {
@@ -207,7 +227,6 @@ public class Camera {
         }
     }
 
-    // call back from stage1, saves open camera device and calls stage2:
 
     private final CameraDevice.StateCallback deviceCallback = new CameraDevice.StateCallback() {
         @Override
@@ -254,7 +273,7 @@ public class Camera {
             csession = session;
             try {
                 CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                b.addTarget(ireader.getSurface());
+                b.addTarget(surface);
                 b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
                 b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
                 b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
@@ -265,9 +284,6 @@ public class Camera {
                 b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
                 b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
                 b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
-                App.log().append("Starting camera!\n");
-                Image img = ireader.acquireLatestImage();
-                if(img != null) img.close();
 
                 App.log().append("camera initialization has succeeded.\n");
 
@@ -322,7 +338,14 @@ public class Camera {
 
     public void stop(boolean quit) {
         csession.close();
-        ireader.close();
+        if(ireader != null) {
+            ireader.close();
+            ireader = null;
+        }
+        if(abuf != null) {
+            abuf.destroy();
+            abuf = null;
+        }
         if(quit) {
             cdevice.close();
             cdevice = null;
@@ -366,84 +389,20 @@ public class Camera {
         }
     };
 
-    public static class Frame {
-
-        private final Image image;
-        private final TotalCaptureResult result;
-
-        private Frame(Image image, TotalCaptureResult result) {
-            this.image = image;
-            this.result = result;
-        }
-
-        public Image getImage() {
-            return image;
-        }
-
-        public <T> T get(CaptureResult.Key<T> key) {
-            return result.get(key);
-        }
-
-        public Object getArrayBuf() {
-            Image.Plane iplane = image.getPlanes()[0];
-            ByteBuffer buf = iplane.getBuffer();
-            if (image.getFormat() == ImageFormat.RAW_SENSOR) {
-                ShortBuffer shortBuffer = buf.asShortBuffer();
-                if(shortBuffer.hasArray()) return shortBuffer.array();
-                short[] vals = new short[shortBuffer.capacity()];
-                shortBuffer.get(vals);
-                return vals;
-            }
-
-            if (buf.hasArray()) return buf.array();
-            byte[] vals = new byte[buf.capacity()];
-            buf.get(vals);
-            return vals;
-        }
-
-        public void close() {
-            image.close();
-        }
-
-        private static class Builder {
-            private Queue<Image> bImageQueue = new ArrayBlockingQueue<>(5);
-            private Queue<TotalCaptureResult> bResultQueue = new ArrayBlockingQueue<>(5);
-
-            private Frame addImage(Image image) {
-                while(bResultQueue.size() > 0) {
-                    TotalCaptureResult r = bResultQueue.poll();
-                    Long timestamp = r.get(CaptureResult.SENSOR_TIMESTAMP);
-                    if(timestamp == image.getTimestamp()) {
-                        return new Frame(image, r);
+    private final Allocation.OnBufferAvailableListener bufferCallback = new Allocation.OnBufferAvailableListener() {
+        @Override
+        public void onBufferAvailable(final Allocation allocation) {
+            // operate in the same thread as captureCallback
+            fhandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    Frame frame = fbuilder.addBuffer();
+                    if (frame != null) {
+                        fcallback.onFrame(frame, num_frames.incrementAndGet());
                     }
                 }
-
-                while(!bImageQueue.add(image)) {
-                    bImageQueue.poll().close();
-                }
-                return null;
-            }
-
-            private Frame addResult(TotalCaptureResult result) {
-                Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-                if(timestamp == null) return null;
-                while(bImageQueue.size() > 0) {
-                    Image img = bImageQueue.poll();
-                    if(img.getTimestamp() == timestamp) {
-                        return new Frame(img, result);
-                    }
-                }
-
-                while(!bResultQueue.add(result)) {
-                    bResultQueue.poll();
-                }
-                return null;
-            }
+            });
         }
-
-        public interface OnFrameCallback {
-            void onFrame(@NonNull Frame frame, int num_frames);
-        }
-    }
+    };
 
 }
