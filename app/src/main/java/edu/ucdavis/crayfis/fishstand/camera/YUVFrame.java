@@ -10,13 +10,19 @@ class YUVFrame extends Frame {
 
     static final Semaphore ioReceiveLock = new Semaphore(1);
 
+    private byte[] copybuf;
+
     YUVFrame(TotalCaptureResult result, Allocation buffer) {
         super(result, buffer);
     }
 
     @Override
-    public Image getImage() {
-        return null;
+    public byte[] getRawBytes(int xoff, int yoff, int w, int h) {
+        if(copybuf == null || copybuf.length != w*h) {
+            copybuf = new byte[w*h];
+        }
+        alloc.copy2DRangeTo(xoff, yoff, w, h, copybuf);
+        return copybuf;
     }
 
     @Override

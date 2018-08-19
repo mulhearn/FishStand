@@ -1,70 +1,77 @@
 package edu.ucdavis.crayfis.fishstand.analysis;
 
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.media.Image;
-
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
 
+import ar.com.hjg.pngj.ImageInfo;
+import ar.com.hjg.pngj.ImageLineByte;
+import ar.com.hjg.pngj.PngWriter;
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Photo implements Analysis {
-    //public static final String TAG = "Photo";
+    private static final String TAG = "Photo";
+
+    private static final int PHOTO_DIM = 256;
+    private static final int X_OFF = 0;
+    private static final int Y_OFF = 0;
 
     private final Config CONFIG;
+    private final ImageInfo info;
+
 
     public Photo(Config cfg) {
         CONFIG = cfg;
+        int bpp = CONFIG.getBoolean("yuv", false) ? 8 : 16;
+        info = new ImageInfo(PHOTO_DIM, PHOTO_DIM, bpp, false, true, false);
     }
 
-    // FIXME: this doesn't work with YUV and would be better in RS.  Low priority though.
     public void ProcessFrame(Frame frame) {
-        Image img = frame.getImage();
-        Image.Plane iplane = img.getPlanes()[0];
-        ByteBuffer buf = iplane.getBuffer();
+        String filename = "run_" + App.getPref().getInt("run_num", 0)
+                + "_" + System.currentTimeMillis() + ".png";
+        OutputStream output = Storage.newOutput(filename);
 
-        int w = (int) (0.1 * ((float) img.getWidth()));
-        int h = (int) (0.1 * ((float) img.getHeight()));
-        //make a square shaped image:
-        if (w > h) h = w;
-        else w = h;
-
-        int off_w = (img.getWidth() - w) >> 1;
-        int off_h = (img.getHeight() - h) >> 1;
-        int pw = iplane.getPixelStride();
-        int rw = iplane.getRowStride();
-
-        Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-
-        for (int i = 0; i < h; i++) {
-            for (int j = 0; j < w; j++) {
-                int index = rw * (off_h + i) + pw * (off_w + j);
-                char b = buf.getChar(index);
-
-                if (b > 0xff) b = 0xff;
-                byte x = (byte) b;
-                //int x = b & 0xFF;
-                //if (b > 0xFF) x = 0xFF;
-                //x = ~x;
-                bm.setPixel(j, i, Color.argb(0xff, x, x, x));
-            }
+        if(output == null) {
+            App.log().append("Failed to write image file.");
+            return;
         }
 
-        // save to output file:
-        String filename = "image_" + System.currentTimeMillis() + ".jpg";
-        OutputStream output = Storage.newOutput(filename);
-        if (output != null) {
-            bm.compress(Bitmap.CompressFormat.JPEG, 50, output);
-        } else {
-            App.log().append("Failed to write image file.");
+        PngWriter writer = new PngWriter(output, info);
+
+        synchronized (this) {
+            for (int irow = 0; irow < PHOTO_DIM; irow++) {
+                ImageLineByte line = new PhotoLineByte(info,
+                        frame.getRawBytes(X_OFF, Y_OFF+irow, PHOTO_DIM, 1));
+                writer.writeRow(line);
+            }
+            writer.close();
         }
 
     }
 
     public void ProcessRun() {
+    }
+
+    /**
+     * Helper class to interpret ByteBuffers in correct order
+     */
+    private class PhotoLineByte extends ImageLineByte {
+
+        private PhotoLineByte(ImageInfo info, byte[] sci) {
+            super(info, sci);
+
+            if(info.bitDepth == 16) {
+
+                byte[] most_significant_bytes = super.getScanlineByte();
+                byte[] least_significant_bytes = super.getScanlineByte2();
+
+                for (int i = 0, s = 0; i < imgInfo.samplesPerRow; i++) {
+                    least_significant_bytes[i] = sci[s++]; // get the first byte
+                    most_significant_bytes[i] = sci[s++]; // get the first byte
+                }
+
+            }
+        }
     }
 }

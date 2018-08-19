@@ -30,5 +30,6 @@ dependencies {
     implementation 'com.android.support.constraint:constraint-layout:1.1.2'
     testImplementation 'junit:junit:4.12'
     implementation 'com.google.android.gms:play-services-drive:15.0.1'
-    implementation 'com.google.android.gms:play-services-auth:15.0.1'
+    implementation 'com.google.android.gms:play-services-auth:16.0.0'
+    implementation 'ar.com.hjg:pngj:2.1.0'
 }

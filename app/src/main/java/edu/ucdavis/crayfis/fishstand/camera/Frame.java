@@ -26,8 +26,11 @@ public abstract class Frame {
         this.alloc = buffer;
     }
 
-    // TODO: this shouldn't be here
-    public abstract Image getImage();
+    public byte[] getRawBytes() {
+        return getRawBytes(0, 0, alloc.getType().getX(), alloc.getType().getY());
+    }
+
+    public abstract byte[] getRawBytes(int xoff, int yoff, int w, int h);
 
     public <T> T get(CaptureResult.Key<T> key) {
         return result.get(key);
