@@ -41,14 +41,12 @@ public class Photo implements Analysis {
 
         PngWriter writer = new PngWriter(output, info);
 
-        synchronized (this) {
-            for (int irow = 0; irow < PHOTO_DIM; irow++) {
-                ImageLineByte line = new PhotoLineByte(info,
-                        frame.getRawBytes(X_OFF, Y_OFF+irow, PHOTO_DIM, 1));
-                writer.writeRow(line);
-            }
-            writer.close();
+        for (int irow = 0; irow < PHOTO_DIM; irow++) {
+            ImageLineByte line = new PhotoLineByte(info,
+                    frame.getRawBytes(X_OFF, Y_OFF+irow, PHOTO_DIM, 1));
+            writer.writeRow(line);
         }
+        writer.close();
 
     }
 

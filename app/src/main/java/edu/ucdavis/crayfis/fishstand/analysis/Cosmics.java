@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
@@ -50,6 +51,8 @@ public class Cosmics implements Analysis {
     private ArrayList<Pair<Integer, Integer>> hotXY = new ArrayList<>();
 
     private static int thresh = 1023;
+
+    private static final ReentrantLock ALLOCATION_LOCK = new ReentrantLock();
 
     public Cosmics(Config cfg) {
 
@@ -104,31 +107,33 @@ public class Cosmics implements Analysis {
         images.incrementAndGet();
 
         final int pixN;
-        synchronized (this) {
-            Allocation buf = frame.asAllocation();
 
-            // RS doesn't seem to allow overloading
-            if(aweights == null) {
-                if(YUV) script.forEach_histogram_YUV(buf);
-                else script.forEach_histogram_RAW(buf);
-            } else {
-                if(YUV) script.forEach_weighted_histogram_YUV(buf, aweights);
-                else script.forEach_weighted_histogram_RAW(buf, aweights);
-            }
-            final int[] pixNcontainer = new int[1];
-            an.copyTo(pixNcontainer);
-            pixN = Math.min(pixNcontainer[0], MAX_N);
-            script.invoke_reset();
 
-            if(pixN > 0) {
-                pix_x_evt = new int[pixN];
-                pix_y_evt = new int[pixN];
-                pix_val_evt = new int[pixN];
-                ax.copy1DRangeToUnchecked(0, pixN, pix_x_evt);
-                ay.copy1DRangeToUnchecked(0, pixN, pix_y_evt);
-                aval.copy1DRangeToUnchecked(0, pixN, pix_val_evt);
-            }
+        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
+
+        // RS doesn't seem to allow overloading
+        if(aweights == null) {
+            if(YUV) script.forEach_histogram_YUV(buf);
+            else script.forEach_histogram_RAW(buf);
+        } else {
+            if(YUV) script.forEach_weighted_histogram_YUV(buf, aweights);
+            else script.forEach_weighted_histogram_RAW(buf, aweights);
         }
+        final int[] pixNcontainer = new int[1];
+        an.copyTo(pixNcontainer);
+        pixN = Math.min(pixNcontainer[0], MAX_N);
+        script.invoke_reset();
+
+        if(pixN > 0) {
+            pix_x_evt = new int[pixN];
+            pix_y_evt = new int[pixN];
+            pix_val_evt = new int[pixN];
+            ax.copy1DRangeToUnchecked(0, pixN, pix_x_evt);
+            ay.copy1DRangeToUnchecked(0, pixN, pix_y_evt);
+            aval.copy1DRangeToUnchecked(0, pixN, pix_val_evt);
+        }
+
+        ALLOCATION_LOCK.unlock();
 
         // TODO: should we add nearby pixels too?
         for(int i=0; i<pixN; i++) {

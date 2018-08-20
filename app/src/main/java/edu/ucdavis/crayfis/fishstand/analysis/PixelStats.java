@@ -9,6 +9,7 @@ import android.util.Log;
 import java.io.DataOutputStream;
 import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
@@ -29,6 +30,8 @@ public class PixelStats implements Analysis {
     private final boolean YUV;
     private final long FILE_SIZE;
     private final int DOWNSAMPLE_STEP;
+
+    private static final ReentrantLock ALLOCATION_LOCK = new ReentrantLock();
 
     public PixelStats(Config cfg) {
 
@@ -68,12 +71,12 @@ public class PixelStats implements Analysis {
     public void ProcessFrame(Frame frame) {
         images.incrementAndGet();
 
-        synchronized (this) {
-            Allocation buf = frame.asAllocation();
+        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
 
-            if (YUV) script.forEach_add_YUV(buf);
-            else script.forEach_add_RAW(buf);
-        }
+        if (YUV) script.forEach_add_YUV(buf);
+        else script.forEach_add_RAW(buf);
+
+        ALLOCATION_LOCK.unlock();
     }
 
     public void ProcessRun() {

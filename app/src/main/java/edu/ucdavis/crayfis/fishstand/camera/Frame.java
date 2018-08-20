@@ -12,6 +12,7 @@ import android.support.annotation.Nullable;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
 
 /**
  * Class for matching TotalCaptureResult and buffer callbacks
@@ -39,9 +40,10 @@ public abstract class Frame {
     /**
      * Get Image buffer corresponding to TotalCaptureResult as an Allocation
      *
+     * @param lock Lock for Allocation to be invoked as late as possible in the copying of the buffer
      * @return RenderScript Allocation with image buffer
      */
-    public abstract Allocation asAllocation();
+    public abstract Allocation asAllocation(Lock lock);
 
     /**
      * Release locks/buffers

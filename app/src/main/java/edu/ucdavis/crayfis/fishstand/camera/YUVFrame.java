@@ -5,6 +5,7 @@ import android.media.Image;
 import android.renderscript.Allocation;
 
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Lock;
 
 class YUVFrame extends Frame {
 
@@ -31,7 +32,7 @@ class YUVFrame extends Frame {
     }
 
     @Override
-    public Allocation asAllocation() {
+    public Allocation asAllocation(Lock lock) {
         return alloc;
     }
 }

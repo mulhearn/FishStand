@@ -8,6 +8,7 @@ import android.util.Log;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
+import java.util.concurrent.locks.Lock;
 
 class RAWFrame extends Frame {
 
@@ -45,7 +46,7 @@ class RAWFrame extends Frame {
     }
 
     @Override
-    public Allocation asAllocation() {
+    public Allocation asAllocation(Lock lock) {
         ShortBuffer sbuf = buf.asShortBuffer();
         short[] vals;
         if(sbuf.hasArray()) {
@@ -55,6 +56,7 @@ class RAWFrame extends Frame {
             sbuf.get(vals);
         }
 
+        lock.lock();
         alloc.copyFromUnchecked(vals);
         return alloc;
     }
