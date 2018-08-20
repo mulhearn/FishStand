@@ -10,11 +10,9 @@ import android.support.v4.content.FileProvider;
 import android.util.Log;
 import android.widget.Toast;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,10 +21,10 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 
@@ -36,14 +34,10 @@ import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 
 public class Config {
     private static final String TAG = "Config";
-    private final List<String> params;
-    private final List<String> values;
+    private final HashMap<String, String> config_map = new HashMap<>();
 
     public Config(String filename, String[] args) {
         if(!filename.endsWith(".cfg")) throw new IllegalArgumentException("Invalid config file");
-
-        params = new ArrayList<>();
-        values = new ArrayList<>();
 
         try {
             InputStream input = new FileInputStream(getFile(filename));
@@ -59,8 +53,7 @@ public class Config {
                         // okay if this throws NumberFormatException: should be handled by Macro
                         tokens[1] = args[arg_num];
                     }
-                    params.add(tokens[0]);
-                    values.add(tokens[1]);
+                    config_map.put(tokens[0], tokens[1]);
                 }
             }
         } catch (IOException e){
@@ -73,17 +66,15 @@ public class Config {
     }
 
     public void logConfig() {
-        for (int i = 0; i < params.size(); i++) {
-            App.log().append("parameter " + params.get(i) + ":  " + values.get(i) + "\n");
+        for(Map.Entry<String, String> entry: config_map.entrySet()) {
+            App.log().append("parameter " + entry.getKey() + ":  " + entry.getValue() + "\n");
         }
     }
 
     public String getString(String param, String def){
-        if (params.contains(param)) {
-            int index = params.indexOf(param);
-            return values.get(index);
-        }
-        return def;
+        String val = config_map.get(param);
+        if(val == null) return def;
+        return val;
     }
 
     public int getInteger(String param, int def) {
@@ -106,6 +97,14 @@ public class Config {
         String str = getString(param, "");
         if (!str.isEmpty()) {
             return Long.parseLong(str);
+        }
+        return def;
+    }
+
+    public double getDouble(String param, double def) {
+        String str = getString(param, "");
+        if(!str.isEmpty()) {
+            return Double.parseDouble(str);
         }
         return def;
     }
@@ -139,14 +138,33 @@ public class Config {
         try {
             writer.write("# config\n");
             writer.write("# Fishstand Run Configuration File\n");
-            writer.write("# Created on Run " + date + "\n");
-            writer.write("tag           #name\n");
-            writer.write("analysis      #name\n");
-            writer.write("num           #int\n");
-            writer.write("sensitivity   #int\n");
-            writer.write("exposure      #ns\n");
-            writer.write("yuv           #bool\n");
-            writer.write("delay         #ms\n");
+            writer.write("# Created on Run " + date + "\n\n");
+
+            writer.write("tag # default_tag\n");
+
+            writer.write("\n### camera ###\n");
+            writer.write("num # 1\n");
+            writer.write("sensitivity # iso value\n");
+            writer.write("exposure # ns\n");
+            writer.write("yuv # bool\n");
+            writer.write("delay # ms\n");
+
+            writer.write("\n### photo ###\n");
+            writer.write("analysis # photo\n");
+            writer.write("dimension # 256\n");
+            writer.write("x_offset # 0\n");
+            writer.write("y_offset # 0\n");
+
+            writer.write("\n### pixelstats ###\n");
+            writer.write("analysis # pixelstats\n");
+            writer.write("filesize # 5000000\n");
+            writer.write("samplefile # 171\n");
+
+            writer.write("\n### cosmics ###\n");
+            writer.write("analysis # cosmics\n");
+            writer.write("pass_rate # .1\n");
+            writer.write("max_n # 120\n");
+
             writer.flush();
             writer.close();
         } catch (Exception e){

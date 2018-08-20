@@ -13,17 +13,19 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 public class Photo implements Analysis {
     private static final String TAG = "Photo";
 
-    private static final int PHOTO_DIM = 256;
-    private static final int X_OFF = 0;
-    private static final int Y_OFF = 0;
+    private final int PHOTO_DIM;
+    private final int X_OFF;
+    private final int Y_OFF;
 
-    private final Config CONFIG;
     private final ImageInfo info;
 
 
     public Photo(Config cfg) {
-        CONFIG = cfg;
-        int bpp = CONFIG.getBoolean("yuv", false) ? 8 : 16;
+        PHOTO_DIM = cfg.getInteger("dimension", 256);
+        X_OFF = Math.min(cfg.getInteger("x_offset", 0), App.getCamera().getResX() - PHOTO_DIM);
+        Y_OFF = Math.min(cfg.getInteger("y_offset", 0), App.getCamera().getResY() - PHOTO_DIM);
+
+        int bpp = cfg.getBoolean("yuv", false) ? 8 : 16;
         info = new ImageInfo(PHOTO_DIM, PHOTO_DIM, bpp, false, true, false);
     }
 

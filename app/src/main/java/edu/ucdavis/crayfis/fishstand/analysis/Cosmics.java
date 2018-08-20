@@ -26,16 +26,15 @@ public class Cosmics implements Analysis {
 
     private AtomicInteger images = new AtomicInteger();
 
-    private final Config CONFIG;
     private final boolean YUV;
-    private final int MAX_HIST;
+    private final int MAX_N;
+    private final double PASS_RATE;
 
     private Allocation ahist;
     private Allocation ax;
     private Allocation ay;
     private Allocation aval;
     private Allocation an;
-    private static final int MAX_N = 50;
     private Allocation aweights;
     private ScriptC_cosmics script;
 
@@ -50,14 +49,15 @@ public class Cosmics implements Analysis {
     // TODO: how do we populate this list?
     private ArrayList<Pair<Integer, Integer>> hotXY = new ArrayList<>();
 
-    private static final double PASS_RATE = .1;
     private static int thresh = 1023;
 
     public Cosmics(Config cfg) {
 
-        CONFIG = cfg;
-        YUV = CONFIG.getBoolean("yuv", false);
-        MAX_HIST = YUV ? 255 : 1023;
+        YUV = cfg.getBoolean("yuv", false);
+        MAX_N = cfg.getInteger("max_n", 120);
+        PASS_RATE = cfg.getDouble("pass_rate", 0.1);
+
+        final int MAX_HIST = YUV ? 255 : 1023;
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();

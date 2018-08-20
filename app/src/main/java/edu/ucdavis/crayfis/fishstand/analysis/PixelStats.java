@@ -19,24 +19,22 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
 
-    private static final long FILE_SIZE = 5000000L;
-    private static final int DOWNSAMPLE_STEP = 171;
-
     private AtomicInteger images = new AtomicInteger();
     private int num_pixels;
-
-    private final boolean YUV;
 
     private Allocation sum;
     private Allocation ssq;
     private ScriptC_pixelstats script;
 
-    private final Config CONFIG;
+    private final boolean YUV;
+    private final long FILE_SIZE;
+    private final int DOWNSAMPLE_STEP;
 
     public PixelStats(Config cfg) {
 
-        CONFIG = cfg;
-        YUV = CONFIG.getBoolean("yuv", false);
+        YUV = cfg.getBoolean("yuv", false);
+        FILE_SIZE = cfg.getLong("filesize", 5000000);
+        DOWNSAMPLE_STEP = cfg.getInteger("samplefile", 171);
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
@@ -111,7 +109,7 @@ public class PixelStats implements Analysis {
     }
 
 
-    private static void WriteOutput(int[] sum_buf, long[] ssq_buf, int num_images) {
+    private void WriteOutput(int[] sum_buf, long[] ssq_buf, int num_images) {
         try {
             int run_num = App.getPref().getInt("run_num", 0);
 
