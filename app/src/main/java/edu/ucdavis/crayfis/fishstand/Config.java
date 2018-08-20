@@ -26,8 +26,6 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-
 /**
  * Created by mulhearn on 7/31/18.
  */
@@ -46,7 +44,7 @@ public class Config {
             while ((line = reader.readLine()) != null) {
                 line = line.split("#")[0]; // remove comments
                 String[] tokens = line.split("\\s+", 2);  // tokenize by first whitespace
-                if ((tokens.length > 1) && (tokens[0].length() > 0)) {
+                if (tokens.length > 1 && !tokens[0].isEmpty() && !tokens[1].isEmpty()) {
                     Log.i(TAG, "parameter:  " + tokens[0] + " value:  " + tokens[1]);
                     if(tokens[1].matches("\\{\\d+\\}")) {
                         int arg_num = Integer.parseInt(tokens[1].substring(1, tokens[1].length()-1));
@@ -96,7 +94,8 @@ public class Config {
     public long getLong(String param, long def) {
         String str = getString(param, "");
         if (!str.isEmpty()) {
-            return Long.parseLong(str);
+            // for scientific notation
+            return Double.valueOf(str).longValue();
         }
         return def;
     }
