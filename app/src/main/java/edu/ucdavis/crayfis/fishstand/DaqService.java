@@ -37,10 +37,6 @@ import edu.ucdavis.crayfis.fishstand.analysis.Photo;
 import edu.ucdavis.crayfis.fishstand.analysis.PixelStats;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 
-/**
- * Created by mulhearn on 4/28/18.
- */
-
 public class DaqService extends Service implements Frame.OnFrameCallback {
 
     private static final float MIN_BATTERY_PCT = .3f;

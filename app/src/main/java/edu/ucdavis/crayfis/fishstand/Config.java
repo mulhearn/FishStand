@@ -26,10 +26,6 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Created by mulhearn on 7/31/18.
- */
-
 public class Config {
     private static final String TAG = "Config";
     private final HashMap<String, String> config_map = new HashMap<>();
@@ -47,9 +43,13 @@ public class Config {
                 if (tokens.length > 1 && !tokens[0].isEmpty() && !tokens[1].isEmpty()) {
                     Log.i(TAG, "parameter:  " + tokens[0] + " value:  " + tokens[1]);
                     if(tokens[1].matches("\\{\\d+\\}")) {
+                        Log.i(TAG, "argument reference detected");
                         int arg_num = Integer.parseInt(tokens[1].substring(1, tokens[1].length()-1));
+                        Log.i(TAG, "argument index:  " + arg_num);
                         // okay if this throws NumberFormatException: should be handled by Macro
                         tokens[1] = args[arg_num];
+                    } else {
+                        Log.i(TAG, "not argument reference:  " + tokens[1]);
                     }
                     config_map.put(tokens[0], tokens[1]);
                 }
@@ -143,8 +143,10 @@ public class Config {
 
             writer.write("\n### camera ###\n");
             writer.write("num # 1\n");
-            writer.write("sensitivity # iso value\n");
-            writer.write("exposure # ns\n");
+            writer.write("sensitivity_reference # iso value, defaults to max analog\n");
+            writer.write("exposure_reference # ns, defaults to maximum exposure\n");
+            writer.write("sensitivity_scale # 1.0 \n");
+            writer.write("exposure_scale # 1.0\n");
             writer.write("yuv # bool\n");
             writer.write("delay # ms\n");
 

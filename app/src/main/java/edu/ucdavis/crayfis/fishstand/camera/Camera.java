@@ -310,8 +310,12 @@ public class Camera {
         num_frames = new AtomicInteger();
 
         yuv = cfg.getBoolean("yuv", false);
-        iso = cfg.getInteger("sensitivity", max_analog);
-        exposure = Math.min(cfg.getLong("exposure", 1000000000L), max_exp);
+        int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
+        long exposure_ref = cfg.getLong("exposure_reference", max_exp);
+        double iso_scale = cfg.getDouble("exposure_scale", 1.0);
+        double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
+        iso = (int) (iso_scale * iso_ref);
+        exposure = (long) (exposure_scale * exposure_ref);
 
         if(cthread == null || !cthread.isAlive()) {
             cthread = new HandlerThread("Camera");

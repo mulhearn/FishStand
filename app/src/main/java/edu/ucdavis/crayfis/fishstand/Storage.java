@@ -8,10 +8,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 
-/**
- * Created by mulhearn on 8/1/18.
- */
-
 public class Storage {
     public static final String WORK_DIR = "FishStand";
 
