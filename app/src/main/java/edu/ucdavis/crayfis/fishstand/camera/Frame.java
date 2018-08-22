@@ -1,9 +1,13 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
+import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
+import android.media.ImageReader;
 import android.os.Build;
+import android.os.Handler;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.support.annotation.NonNull;
@@ -14,17 +18,97 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 
-/**
- * Class for matching TotalCaptureResult and buffer callbacks
- */
-public abstract class Frame {
+
+public interface Frame {
+    // Callback when a frame has been assembled from it's components by the builder
+    interface OnFrameCallback {
+        void onFrame(@NonNull Frame frame, int num_frames);
+    }
+
+    // Frame interface, common to RAW, YUV, ...
+    byte[] getRawBytes();
+
+    byte[] getRawBytes(int xoff, int yoff, int w, int h);
+
+
+    <T> T get(CaptureResult.Key<T> key);
+
+    //Get Image buffer corresponding to TotalCaptureResult as an Allocation
+    //
+    // @param lock Lock for Allocation to be invoked as late as possible in the copying of the buffer
+    // @return RenderScript Allocation with image buffer
+    //
+    Allocation asAllocation(Lock lock);
+
+    // Release locks/buffers
+    void close();
+
+    // The Builder class assembles a complete Frame from components made available via their respective callbacks:
+    class Builder extends CameraCaptureSession.CaptureCallback implements ImageReader.OnImageAvailableListener, Allocation.OnBufferAvailableListener {
+
+        public Builder(){}
+
+        public void setOnFrameCallback(Frame.OnFrameCallback frame_callback){
+            //this.frame_callback = frame_callback;
+        }
+
+        public void setAllocation(@NonNull Allocation buf){
+        }
+
+        public void setHandler(Handler handler){
+        }
+
+        // Constructor
+        // @param buf RenderScript Allocation into which the image buffers will be copied
+        //Builder(@NonNull Allocation buf, Frame.OnFrameCallback frame_callback) {
+            //this.buf = buf;
+            //yuv = buf.getElement().getDataType() != Element.DataType.UNSIGNED_16;
+            //this.frame_callback = frame_callback;
+        //}
+
+        // Callback for Capture Result
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            super.onCaptureCompleted(session, request, result);
+            //Frame frame = fbuilder.addResult(result);
+            //if (frame != null) {
+            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        }
+
+        // Callback for Image Available
+        public void onImageAvailable(ImageReader imageReader) {
+            //Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
+            //if (frame != null) {
+            //fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        }
+
+        // Callback for Buffer Available
+        public void onBufferAvailable(final Allocation allocation) {
+            // Needs to be handled in frame handler...
+
+            //Frame frame = fbuilder.addBuffer();
+            //if (frame != null) {
+            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        };
+
+
+    };
+
+}
+
+/*
+//  Class for matching TotalCaptureResult and buffer callbacks
+private abstract class FrameX {
 
     private final TotalCaptureResult result;
     final Allocation alloc;
 
-    Frame(TotalCaptureResult result, Allocation buffer) {
+    FrameX(TotalCaptureResult result, Allocation alloc) {
         this.result = result;
-        this.alloc = buffer;
+        this.alloc = alloc;
     }
 
     public byte[] getRawBytes() {
@@ -37,40 +121,58 @@ public abstract class Frame {
         return result.get(key);
     }
 
-    /**
-     * Get Image buffer corresponding to TotalCaptureResult as an Allocation
-     *
-     * @param lock Lock for Allocation to be invoked as late as possible in the copying of the buffer
-     * @return RenderScript Allocation with image buffer
-     */
+    //Get Image buffer corresponding to TotalCaptureResult as an Allocation
+    //
+    // @param lock Lock for Allocation to be invoked as late as possible in the copying of the buffer
+    // @return RenderScript Allocation with image buffer
+    //
     public abstract Allocation asAllocation(Lock lock);
 
-    /**
-     * Release locks/buffers
-     */
-    public abstract void close();
 
-    /**
-     * Builder pattern for Frames
-     */
-    static class Builder {
-        private final Queue<Image> bImageQueue = new ArrayBlockingQueue<>(5);
-        private final Queue<TotalCaptureResult> bResultQueue = new ArrayBlockingQueue<>(5);
-        private final Allocation bBuf;
-        
-        private final boolean yuv;
-        private final AtomicInteger buffersQueued = new AtomicInteger(0);
-        private boolean bufferReady;
+    public abstract void close_imp();
 
-        /**
-         * Constructor
-         * @param buf RenderScript Allocation into which the image buffers will be copied
-         */
-        Builder(@NonNull Allocation buf) {
-            bBuf = buf;
-            yuv = bBuf.getElement().getDataType() != Element.DataType.UNSIGNED_16;
+    static class Builder extends CameraCaptureSession.CaptureCallback implements ImageReader.OnImageAvailableListener, Allocation.OnBufferAvailableListener {
+
+        Builder(@NonNull Allocation buf, OnFrameCallback frame_callback) {
+            this.buf = buf;
+            yuv = buf.getElement().getDataType() != Element.DataType.UNSIGNED_16;
+            this.frame_callback = frame_callback;
         }
 
+        // Callback for Capture Result
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            super.onCaptureCompleted(session, request, result);
+            //Frame frame = fbuilder.addResult(result);
+            //if (frame != null) {
+            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        }
+
+        // Callback for CaptureResult
+        public void onImageAvailable(ImageReader imageReader) {
+            //Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
+            //if (frame != null) {
+            //fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        }
+
+        public void onBufferAvailable(final Allocation allocation) {
+            //Frame frame = fbuilder.addBuffer();
+            //if (frame != null) {
+            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
+            //}
+        };
+
+        private final boolean yuv;   // is this YUV format or RAW?
+
+        private final Queue<Image> image_queue = new ArrayBlockingQueue<>(5);
+        private final Queue<TotalCaptureResult> result_queue = new ArrayBlockingQueue<>(5);
+        private final Allocation buf;
+
+        private OnFrameCallback frame_callback;
+
+        /*
         @Nullable
         Frame addImage(Image image) {
             while(bResultQueue.size() > 0) {
@@ -145,9 +247,10 @@ public abstract class Frame {
             }
             return null;
         }
+
     }
 
     public interface OnFrameCallback {
         void onFrame(@NonNull Frame frame, int num_frames);
     }
-}
+}*/

@@ -1,5 +1,6 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
 import android.renderscript.Allocation;
@@ -10,7 +11,23 @@ import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
 import java.util.concurrent.locks.Lock;
 
-class RAWFrame extends Frame {
+class RAWFrame implements Frame {
+
+    // Frame interface:
+
+    public byte[] getRawBytes() {
+        //return getRawBytes(0, 0, alloc.getType().getX(), alloc.getType().getY());
+        return null;
+    }
+
+    public byte[] getRawBytes(int xoff, int yoff, int w, int h){
+        return null;
+    }
+
+    public <T> T get(CaptureResult.Key<T> key) {
+        //return result.get(key);
+        return null;
+    }
 
     private final Image image;
 
@@ -21,7 +38,6 @@ class RAWFrame extends Frame {
     private byte[] copybuf;
 
     RAWFrame(Image image, TotalCaptureResult result, Allocation buffer) {
-        super(result, buffer);
         this.image = image;
         Image.Plane plane = image.getPlanes()[0];
         buf = plane.getBuffer();
@@ -29,8 +45,7 @@ class RAWFrame extends Frame {
         pixel_stride = plane.getPixelStride();
     }
 
-    @Override
-    public byte[] getRawBytes(int xoff, int yoff, int w, int h) {
+    public byte[] getRawBytesOld(int xoff, int yoff, int w, int h) {
 
         int row_bytes = pixel_stride*w;
         if(copybuf == null || copybuf.length != h*row_bytes) {
@@ -57,8 +72,9 @@ class RAWFrame extends Frame {
         }
 
         lock.lock();
-        alloc.copyFromUnchecked(vals);
-        return alloc;
+        //alloc.copyFromUnchecked(vals);
+        //return alloc;
+        return null;
     }
 
     @Override
