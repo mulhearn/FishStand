@@ -137,6 +137,7 @@ public abstract class Frame {
                     if (img.getTimestamp() == timestamp) {
                         return new RAWFrame(img, result, bBuf);
                     }
+                    img.close();
                 }
             }
 

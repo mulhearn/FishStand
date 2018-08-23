@@ -33,6 +33,7 @@ class YUVFrame extends Frame {
 
     @Override
     public Allocation asAllocation(Lock lock) {
+        lock.lock();
         return alloc;
     }
 }
