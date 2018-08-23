@@ -147,8 +147,12 @@ public class Config {
             writer.write("exposure_reference # ns, defaults to maximum exposure\n");
             writer.write("sensitivity_scale # 1.0 \n");
             writer.write("exposure_scale # 1.0\n");
-            writer.write("yuv # bool\n");
             writer.write("delay # ms\n");
+
+            writer.write("\n### additional formats ###\n");
+            writer.write("yuv # bool\n");
+            writer.write("resolution # RESxRES, defaults to max\n");
+            writer.write("saturation # 1023\n");
 
             writer.write("\n### photo ###\n");
             writer.write("analysis # photo\n");

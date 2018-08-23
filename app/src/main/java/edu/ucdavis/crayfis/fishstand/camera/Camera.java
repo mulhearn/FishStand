@@ -1,27 +1,30 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
-import java.nio.ShortBuffer;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 import android.content.Context;
+import android.graphics.PointF;
 import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.params.ColorSpaceTransform;
+import android.hardware.camera2.params.RggbChannelVector;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.hardware.camera2.CameraCaptureSession;
-import android.media.Image;
+import android.hardware.camera2.params.TonemapCurve;
 import android.media.ImageReader;
 import android.graphics.ImageFormat;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.renderscript.Allocation;
@@ -29,6 +32,8 @@ import android.renderscript.Element;
 import android.renderscript.RenderScript;
 import android.renderscript.Type;
 import android.support.annotation.NonNull;
+import android.util.Log;
+import android.util.Pair;
 import android.util.Range;
 import android.util.SizeF;
 import android.util.Size;
@@ -63,7 +68,7 @@ public class Camera {
     private Frame.OnFrameCallback fcallback;
     private AtomicInteger num_frames;
 
-    private int max_images=10;
+    private static final int max_images=10;
 
     // discovered camera properties for RAW format at highest resolution
     private long min_exp=0;
@@ -76,6 +81,11 @@ public class Camera {
     private Size raw_size;
     private int iso;
     private long exposure;
+    private Size size;
+    private float[] tonemap;
+
+    private boolean configured = false;
+    private boolean initial_received = false;
 
 
     public Camera() {
@@ -149,19 +159,62 @@ public class Camera {
                 summary += "\n";
                 summary += "Largest size is " + raw_size + "\n";
 
-                float fls[] = cchars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
                 summary += "focal lengths:  ";
-                for(float fl: fls){
+                for(float fl: cchars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)){
                     summary += fl + ", ";
                 }
                 summary += "\n";
 
-                int ns[] = cchars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
-                summary+="noise modes:  ";
-                for(int n: ns){
-                    summary += n + ", ";
+                summary += "color correction mode:  ";
+                String color_mode = "ON";
+                for(int n: cchars.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES)){
+                    if(n == CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_OFF) {
+                        color_mode = "OFF";
+                        break;
+                    }
                 }
-                summary += "\n";
+                summary += color_mode + "\n";
+
+                summary += "noise reduction mode:  ";
+                String noise_mode = "ON";
+                for(int n: cchars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES)){
+                    if(n == CameraMetadata.NOISE_REDUCTION_MODE_OFF) {
+                        noise_mode = "OFF";
+                        break;
+                    }
+                }
+                summary += noise_mode + "\n";
+
+                summary += "hotpixel mode:  ";
+                String hotpixel_mode = "ON";
+                for(int n: cchars.get(CameraCharacteristics.HOT_PIXEL_AVAILABLE_HOT_PIXEL_MODES)){
+                    if(n == CameraMetadata.HOT_PIXEL_MODE_OFF) {
+                        hotpixel_mode = "OFF";
+                        break;
+                    }
+                }
+                summary += hotpixel_mode + "\n";
+
+                summary += "edge mode:  ";
+                String edge_mode = "ON";
+                for(int n: cchars.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES)){
+                    if(n == CameraMetadata.HOT_PIXEL_MODE_OFF) {
+                        edge_mode = "OFF";
+                        break;
+                    }
+                }
+                summary += edge_mode + "\n";
+
+                summary += "tonemap control: ";
+                String tonemap_control = "DISABLED";
+                for(int n: cchars.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES)){
+                    if(n == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
+                        tonemap_control = "ENABLED";
+                        break;
+                    }
+                }
+                summary += tonemap_control + "\n";
+
 
                 Range<Long> rexp = cchars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
                 min_exp = rexp.getLower();
@@ -175,13 +228,27 @@ public class Camera {
                 summary += "Sensitivity range:  " + min_sens + " to " + max_sens + " (ISO)\n";
 
                 max_analog = cchars.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
-                summary += "Make Analog Sensitivity:  " + max_analog + "\n";
+                summary += "Max Analog Sensitivity:  " + max_analog + "\n";
 
-                int filter_arrangement = cchars.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
-                summary += "Color filter arrangement:  " + filter_arrangement + "\n";
+                final String filter_str;
+                switch (cchars.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT)) {
+                    case CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_RGGB:
+                        filter_str = "RGGB";
+                        break;
+                    case CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_GRBG:
+                        filter_str = "GRBG";
+                        break;
+                    case CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_BGGR:
+                        filter_str = "BGGR";
+                        break;
+                    case CameraMetadata.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_RGB:
+                        filter_str = "RGB";
+                        break;
+                    default:
+                        filter_str = "Unknown";
+                }
+                summary += "Color filter arrangement:  " + filter_str + "\n";
 
-                //Boolean shading = cchars.get(CameraCharacteristics.SENSOR_INFO_LENS_SHADING_APPLIED);
-                //summary += "Lens shading correction applied to RAW:  " + shading + "\n";
                 App.log().append(summary);
 
                 App.log().append("Camera settings initialized.\n");
@@ -199,8 +266,8 @@ public class Camera {
         if(yuv) {
             App.log().append("Using YUV.\n");
             abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
-                    .setX(raw_size.getWidth())
-                    .setY(raw_size.getHeight())
+                    .setX(size.getWidth())
+                    .setY(size.getHeight())
                     .setYuvFormat(ImageFormat.YUV_420_888)
                     .create(),
                     Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
@@ -208,12 +275,12 @@ public class Camera {
             abuf.setOnBufferAvailableListener(bufferCallback);
         } else {
             App.log().append("Using RAW.\n");
-            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
+            ireader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
             surface = ireader.getSurface();
             ireader.setOnImageAvailableListener(imageCallback, fhandler);
             abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                    .setX(raw_size.getWidth())
-                    .setY(raw_size.getHeight())
+                    .setX(size.getWidth())
+                    .setY(size.getHeight())
                     .create(),
                     Allocation.USAGE_SCRIPT);
         }
@@ -274,20 +341,49 @@ public class Camera {
             try {
                 CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                 b.addTarget(surface);
+                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
                 b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
                 b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-                b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-                b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-                b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
-                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
                 b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
+                b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
                 b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
-                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF); // need to see if any effect!
-                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF); // need to see if any effect!
+                b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
+
+
+                // extra params for non-RAW
+                b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+                //b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(1, 1, 1, 1));
+                b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, new ColorSpaceTransform
+                        (new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1})); // identity matrix
+                b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+                b.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
+                b.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(tonemap, tonemap, tonemap));
+
 
                 App.log().append("camera initialization has succeeded.\n");
 
-                csession.setRepeatingRequest(b.build(), captureCallback, fhandler);
+                final CaptureRequest request = b.build();
+
+                // do an initial capture to query the CaptureResult
+                initial_received = false;
+                csession.capture(request, initialCallback, fhandler);
+
+                // wait 3 seconds so the CPU can keep up with the buffers
+                chandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            csession.setRepeatingRequest(request, captureCallback, fhandler);
+                        } catch (CameraAccessException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }, 3000L);
+
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -304,18 +400,44 @@ public class Camera {
         }
     };
 
-    public void start(Frame.OnFrameCallback callback, Config cfg) {
 
-        fcallback = callback;
-        num_frames = new AtomicInteger();
 
+    public void configure(Config cfg) {
         yuv = cfg.getBoolean("yuv", false);
         int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
         long exposure_ref = cfg.getLong("exposure_reference", max_exp);
-        double iso_scale = cfg.getDouble("exposure_scale", 1.0);
+        double iso_scale = cfg.getDouble("sensitivity_scale", 1.0);
         double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
         iso = (int) (iso_scale * iso_ref);
         exposure = (long) (exposure_scale * exposure_ref);
+
+        String res_str = cfg.getString("resolution", null);
+        if(yuv && res_str != null && res_str.matches("\\d+x\\d+")) {
+            String[] res = cfg.getString("resolution", "").split("x");
+            size = new Size(Integer.parseInt(res[0]), Integer.parseInt(res[1]));
+        } else {
+            size = raw_size;
+        }
+
+        int saturation = cfg.getInteger("saturation", 1023);
+        if(saturation == 1023) {
+            tonemap = new float[]{0f, 0f, 1f, 1f};
+        } else {
+            // linear up to saturation point
+            tonemap = new float[]{0f, 0f, (float)(saturation+1)/1024, 1f, 1f, 1f};
+        }
+
+        configured = true;
+    }
+
+    public void start(Frame.OnFrameCallback callback) {
+        if(!configured) {
+            App.log().append("Camera not configured!\n");
+            return;
+        }
+
+        fcallback = callback;
+        num_frames = new AtomicInteger();
 
         if(cthread == null || !cthread.isAlive()) {
             cthread = new HandlerThread("Camera");
@@ -341,6 +463,8 @@ public class Camera {
     }
 
     public void stop(boolean quit) {
+        configured = false;
+
         csession.close();
         if(ireader != null) {
             ireader.close();
@@ -357,11 +481,11 @@ public class Camera {
     }
 
     public int getResX() {
-        return raw_size.getWidth();
+        return size.getWidth();
     }
 
     public int getResY() {
-        return raw_size.getHeight();
+        return size.getHeight();
     }
 
     public int getISO() {
@@ -371,6 +495,52 @@ public class Camera {
     public long getExposure() {
         return exposure;
     }
+
+    private final CameraCaptureSession.CaptureCallback initialCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            super.onCaptureCompleted(session, request, result);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("capture complete with exposure " + result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+                    + " duration " + result.get(CaptureResult.SENSOR_FRAME_DURATION)
+                    + " sensitivity " + result.get(CaptureResult.SENSOR_SENSITIVITY) + "\n")
+                    .append("effective exposure factor:  " + result.get(CaptureResult.REPROCESS_EFFECTIVE_EXPOSURE_FACTOR) + "\n");
+
+            TonemapCurve curve = result.get(CaptureResult.TONEMAP_CURVE);
+            if(curve != null) {
+                float saturation_x = 1f;
+                for (int i = 0; i < curve.getPointCount(TonemapCurve.CHANNEL_GREEN); i++) {
+                    PointF point = curve.getPoint(TonemapCurve.CHANNEL_GREEN, i);
+                    if (point.y > 0.999f) {
+                        saturation_x = point.x;
+                        break;
+                    }
+                }
+
+                sb.append("saturation point: " + (int) (saturation_x * 1023) + "\n");
+            }
+            sb.append("color gains:  " + result.get(CaptureResult.COLOR_CORRECTION_GAINS) + "\n")
+                    .append("sRGB transform:" + result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM) + "\n");
+
+            Pair<Double, Double>[] noise_coeffs = result.get(CaptureResult.SENSOR_NOISE_PROFILE);
+            if(noise_coeffs != null) {
+                sb.append("noise profile\n")
+                        .append("R: " + noise_coeffs[0].toString() + "\n")
+                        .append("G: " + noise_coeffs[1].toString() + "\n")
+                        .append("B: " + noise_coeffs[2].toString() + "\n");
+            }
+
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                float[] black_levels = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
+                if(black_levels != null)
+                    sb.append("black level:  " + black_levels[0] + ", " + black_levels[1] + ", " + black_levels[2] + "\n");
+                sb.append("white level:  " + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL) + "\n");
+            }
+
+            App.log().append(sb.toString());
+        }
+    };
 
     private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
@@ -386,6 +556,11 @@ public class Camera {
     private final ImageReader.OnImageAvailableListener imageCallback = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader imageReader) {
+            if (!initial_received) {
+                imageReader.acquireNextImage().close();
+                initial_received = true;
+                return;
+            }
             Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
             if (frame != null) {
                 fcallback.onFrame(frame, num_frames.incrementAndGet());
@@ -396,6 +571,11 @@ public class Camera {
     private final Allocation.OnBufferAvailableListener bufferCallback = new Allocation.OnBufferAvailableListener() {
         @Override
         public void onBufferAvailable(final Allocation allocation) {
+            if(!initial_received) {
+                allocation.ioReceive();
+                initial_received = true;
+                return;
+            }
             // operate in the same thread as captureCallback
             fhandler.post(new Runnable() {
                 @Override

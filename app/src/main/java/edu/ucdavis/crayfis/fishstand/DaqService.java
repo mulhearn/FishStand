@@ -10,7 +10,10 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.PointF;
+import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.params.TonemapCurve;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Build;
@@ -21,6 +24,7 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+import android.util.Pair;
 import android.widget.Toast;
 import android.os.IBinder;
 
@@ -209,6 +213,8 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         App.log().append("init called.\n");
         cfg.logConfig();
 
+        App.getCamera().configure(cfg);
+
         run_finished = false;
         events = new AtomicInteger();
 
@@ -246,7 +252,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             delay_applied = true;
         }
 
-        App.getCamera().start(this, cfg);
+        App.getCamera().start(this);
     }
 
     private void Stop() {
@@ -324,7 +330,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             last_exposure = exp;
             last_duration = dur;
             last_iso = iso;
-            App.log().append("capture complete with exposure " + exp + " duration " + dur + " sensitivity " + iso + "\n");
+
+            App.log().append("capture complete with exposure " + exp
+                    + " duration " + dur
+                    + " sensitivity " + iso + "\n");
         }
 
         if (num_frames == num + 1) {
