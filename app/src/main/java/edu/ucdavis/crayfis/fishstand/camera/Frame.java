@@ -12,14 +12,19 @@ import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 
 
 public interface Frame {
+    static final String TAG = "Frame";
     // Callback when a frame has been assembled from it's components by the builder
     interface OnFrameCallback {
         void onFrame(@NonNull Frame frame, int num_frames);
@@ -45,53 +50,120 @@ public interface Frame {
 
     // The Builder class assembles a complete Frame from components made available via their respective callbacks:
     class Builder extends CameraCaptureSession.CaptureCallback implements ImageReader.OnImageAvailableListener, Allocation.OnBufferAvailableListener {
+        Handler frame_handler;
+        Frame.OnFrameCallback frame_callback;
+        Allocation buf;
+        Boolean raw;
+
+        AtomicInteger image_count = new AtomicInteger();
+
+        private final Deque<Image> image_deque = new ArrayDeque<Image>(5);
+        private final Deque<TotalCaptureResult> result_deque = new ArrayDeque<TotalCaptureResult>(5);
 
         public Builder(){}
 
+        public void setHandler(Handler frame_handler){
+            this.frame_handler = frame_handler;
+        }
+
         public void setOnFrameCallback(Frame.OnFrameCallback frame_callback){
-            //this.frame_callback = frame_callback;
+            this.frame_callback = frame_callback;
         }
 
         public void setAllocation(@NonNull Allocation buf){
+            this.buf = buf;
+            raw = buf.getElement().getDataType() == Element.DataType.UNSIGNED_16;
         }
 
-        public void setHandler(Handler handler){
-        }
+        private void findCompleteFrames() {
+            if (raw) {
+                Image image = image_deque.poll();
+                TotalCaptureResult result = result_deque.poll();
 
-        // Constructor
-        // @param buf RenderScript Allocation into which the image buffers will be copied
-        //Builder(@NonNull Allocation buf, Frame.OnFrameCallback frame_callback) {
-            //this.buf = buf;
-            //yuv = buf.getElement().getDataType() != Element.DataType.UNSIGNED_16;
-            //this.frame_callback = frame_callback;
-        //}
+                if ((image == null) || (result == null)) {
+                    if (image != null) {
+                        // attempt to push back the image:
+                        if (!image_deque.offerFirst(image)) {
+                            // offer was refused, so give up on this image:
+                            image.close();
+                            image_count.decrementAndGet();
+                        }
+                    }
+                    if (result != null) {
+                        result_deque.offerFirst(result);
+                    }
+                    return;
+                }
+
+                long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                long image_timestamp = image.getTimestamp();
+
+                if (result_timestamp == image_timestamp) {
+                    Log.i(TAG, "completed frame with timestamp  " + result_timestamp);
+
+                    image.close();
+                    image_count.decrementAndGet();
+                    // look for more:
+                    findCompleteFrames();
+                    return;
+                } else {
+                    Log.i(TAG, "unmatched frame with timestamps " + result_timestamp + " " + image_timestamp);
+                    Log.i(TAG, "difference:  " + (result_timestamp - image_timestamp));
+                }
+                // drop the oldest and try again:
+                if (result_timestamp < image_timestamp) {
+                    if (!image_deque.offerFirst(image)) {
+                        // offer was refused, so close the image:
+                        image.close();
+                        image_count.decrementAndGet();
+                    }
+                } else {
+                    image.close();
+                    image_count.decrementAndGet();
+                    result_deque.offerFirst(result);
+                }
+                findCompleteFrames();
+            }
+        }
 
         // Callback for Capture Result
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            //Frame frame = fbuilder.addResult(result);
-            //if (frame != null) {
-            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
-            //}
+
+            while (!result_deque.offer(result)) {
+                result_deque.poll();
+                Log.e(TAG, "result queue is full, discarding oldest result");
+            }
+            findCompleteFrames();
         }
 
         // Callback for Image Available
         public void onImageAvailable(ImageReader imageReader) {
-            //Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
-            //if (frame != null) {
-            //fcallback.onFrame(frame, num_frames.incrementAndGet());
-            //}
+            // TODO:  Fix hard-coded max images:
+            if (image_count.incrementAndGet() <= 10) {
+                Image image = imageReader.acquireLatestImage();
+                while (!image_deque.offer(image)) {
+                    image_deque.poll().close();
+                    image_count.decrementAndGet();
+                    Log.e(TAG, "image queue is full, discarding oldest result");
+                }
+            } else {
+                image_count.decrementAndGet();
+            }
+            findCompleteFrames();
         }
 
         // Callback for Buffer Available
         public void onBufferAvailable(final Allocation allocation) {
-            // Needs to be handled in frame handler...
+            // unlike onImageAvailable and onCaptureCompleted, this callback
+            // was not called from the frame thread, so we post to the frame handler:
+            frame_handler.post(new Runnable() {
+                @Override
+                public void run() {
 
-            //Frame frame = fbuilder.addBuffer();
-            //if (frame != null) {
-            //    fcallback.onFrame(frame, num_frames.incrementAndGet());
-            //}
+                }
+            });
         };
 
 
