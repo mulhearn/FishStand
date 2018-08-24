@@ -90,7 +90,7 @@ public abstract class Frame {
         @Nullable
         Frame addBuffer() {
             buffersQueued.incrementAndGet();
-            YUVFrame.ioReceiveLock.tryAcquire();
+            YUVFrame.ioReceiveLock.acquireUninterruptibly();
             if(!bufferReady) {
                 bBuf.ioReceive();
                 bufferReady = true;
