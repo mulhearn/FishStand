@@ -94,16 +94,16 @@ public class RawFrame implements Frame {
         final Handler frame_handler;
         final Frame.OnFrameCallback frame_callback;
 
-        // Storage for last acquired image and capture result:
+        // Storage for last acquired image
         Image image = null;
-        TotalCaptureResult result = null;
+        // Collection of recent TotalCaptureResults  OPTION B:
+        CaptureResultCollector result_collector = new CaptureResultCollector();
 
         // For now we have a single Allocation and single lock...
-        private static final Semaphore allocation_lock = new Semaphore(1);
+        private static final Semaphore alloc_lock = new Semaphore(1);
         Allocation alloc;
 
         // statistics on frame building
-        int dropped_results = 0;
         int dropped_images = 0;
         int matches = 0;
 
@@ -123,21 +123,35 @@ public class RawFrame implements Frame {
         }
 
         private void buildFrame() {
-            if ((image == null) || (result == null)) {
+            if (image == null) {
                 return;
             }
             long image_timestamp = image.getTimestamp();
-            long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
 
-            if (image_timestamp == result_timestamp) {
-                Log.i(TAG, "found frame with timestamp " + image_timestamp);
-                matches += 1;
-                RawFrame frame = new RawFrame(image, result, alloc, allocation_lock);
+            TotalCaptureResult result;
+            try {
+                result = result_collector.findMatch(image_timestamp);
+            } catch (CaptureResultCollector.StaleTimeStampException e) {
+                Log.e(TAG, "stale image timestamp encountered, discarding image.");
+                image.close();
+                image_count.decrementAndGet();
+                dropped_images += 1;
                 image = null;
-                result = null;
-
-                frame_callback.onFrame(frame, matches);
+                return;
             }
+
+            if (result == null){
+                Log.e(TAG, "result deque is empty.");
+                return;
+            }
+
+            long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+            Log.i(TAG, "match found called with timestamps " + result_timestamp + " and " + image_timestamp);
+
+            matches++;
+            Frame frame = new RawFrame(image, result, alloc, alloc_lock);
+            image = null;
+            frame_callback.onFrame(frame, matches);
         }
 
 
@@ -145,27 +159,30 @@ public class RawFrame implements Frame {
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            Log.i(TAG, "capture complete called");
-            if (this.result != null) {
-                dropped_results += 1;
-            }
-            this.result = result;
+            long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+            Log.i(TAG, "capture complete called with timestamp " + result_timestamp);
+            result_collector.add(result);
             buildFrame();
         }
 
         // Callback for Image Available
         public void onImageAvailable(ImageReader imageReader) {
-            Log.i(TAG, "image available called");
+            Log.i(TAG, "image available called, image timestamp ");
             if (this.image != null) {
-                this.image.close();
+                Log.i(TAG, "dropping stored image with timestamp " + image.getTimestamp());
+                image.close();
                 image_count.decrementAndGet();
                 dropped_images += 1;
+                image = null;
             }
             if (image_count.get() < max_images-2) {
-                this.image = imageReader.acquireLatestImage();
+                image = imageReader.acquireLatestImage();
+                Log.i(TAG, "keeping new image with timestamp " + image.getTimestamp());
                 image_count.incrementAndGet();
             } else {
-                imageReader.acquireLatestImage().close();
+                Image image = imageReader.acquireLatestImage();
+                Log.i(TAG, "dropping new image with timestamp " + image.getTimestamp());
+                image.close();
                 dropped_images += 1;
             }
             buildFrame();
@@ -179,18 +196,9 @@ public class RawFrame implements Frame {
             frame_handler.post(new Runnable() {
                 @Override
                 public void run() {
-                    if (result != null){
-                        result = null;
-                        dropped_results++;
-                    }
-                    if (image != null){
-                        image.close();
-                        image_count.decrementAndGet();
-                        dropped_images++;
-                    }
                     App.log().append("matched frames:  " + matches + "\n")
                             .append("dropped images:   " + dropped_images + "\n")
-                            .append("dropped results:  " + dropped_results + "\n");
+                            .append("dropped results:  " + result_collector.dropped() + "\n");
                 }
             });
         }
