@@ -1,6 +1,7 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
 import java.text.DateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import android.renderscript.Element;
 import android.renderscript.RenderScript;
 import android.renderscript.Type;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
@@ -47,22 +49,25 @@ public class Camera {
 
     private static final String TAG = "Camera";
 
+    private static int N_ALLOC = 2;
+
     //camera2 api objects
     private String cid;
     private final CameraManager cmanager;
     private CameraCharacteristics cchars;
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
-    
+
     private HandlerThread cthread;
     private Handler chandler;
-    
+
     private HandlerThread fthread;
     private Handler fhandler;
 
     private ImageReader ireader;
-    private Allocation abuf;
-    private Surface surface;
+    private Allocation araw;
+    private List<Allocation> ayuv;
+    private List<Surface> surfaces;
 
     private Frame.Builder fbuilder;
     private Frame.OnFrameCallback fcallback;
@@ -260,38 +265,84 @@ public class Camera {
         }
     }
 
-    private void create_session() {
+    private void createSession() {
         App.log().append("Creating capture session\n");
         RenderScript rs = App.getRenderScript();
+        surfaces = new ArrayList<>();
         if(yuv) {
             App.log().append("Using YUV.\n");
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
-                    .setX(size.getWidth())
-                    .setY(size.getHeight())
-                    .setYuvFormat(ImageFormat.YUV_420_888)
-                    .create(),
-                    Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
-            surface = abuf.getSurface();
-            abuf.setOnBufferAvailableListener(bufferCallback);
+            ayuv = new ArrayList<>(N_ALLOC);
+            for(int i=0; i<N_ALLOC; i++) {
+                Allocation a = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
+                                .setX(size.getWidth())
+                                .setY(size.getHeight())
+                                .setYuvFormat(ImageFormat.YUV_420_888)
+                                .create(),
+                        Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
+                ayuv.add(a);
+                surfaces.add(a.getSurface());
+                a.setOnBufferAvailableListener(bufferCallback);
+            }
+            fbuilder = new YUVFrame.Builder(ayuv);
         } else {
             App.log().append("Using RAW.\n");
             ireader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
-            surface = ireader.getSurface();
+            surfaces = Arrays.asList(ireader.getSurface());
             ireader.setOnImageAvailableListener(imageCallback, fhandler);
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
+            araw = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
                     .setX(size.getWidth())
                     .setY(size.getHeight())
                     .create(),
                     Allocation.USAGE_SCRIPT);
+            fbuilder = new RAWFrame.Builder(araw);
         }
-        fbuilder = new Frame.Builder(abuf);
-        List<Surface> outputs = new ArrayList<>(1);
-        outputs.add(surface);
+
         try {
-            cdevice.createCaptureSession(outputs, sessionCallback, chandler);
+            cdevice.createCaptureSession(surfaces, sessionCallback, chandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    @Nullable
+    private List<CaptureRequest> makeRequests(List<Surface> surfaces) {
+        List<CaptureRequest> requests = new ArrayList<>();
+        for(Surface s : surfaces) {
+            try {
+                CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                b.addTarget(s);
+                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
+                b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
+                b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
+                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
+                b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
+                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
+                b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
+                b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
+
+
+                // extra params for non-RAW
+                b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+                //b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(1, 1, 1, 1));
+                b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, new ColorSpaceTransform
+                        (new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1})); // identity matrix
+                b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+                b.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
+                b.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(tonemap, tonemap, tonemap));
+
+
+                App.log().append("camera initialization has succeeded.\n");
+
+                requests.add(b.build());
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+        return requests;
     }
 
 
@@ -301,7 +352,7 @@ public class Camera {
             //This is called when the camera is open
             cdevice = camera;
             App.log().append("Camera is open.\n");
-            create_session();
+            createSession();
         }
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
@@ -338,60 +389,42 @@ public class Camera {
         public void	onConfigured(@NonNull CameraCaptureSession session){
             App.log().append("Camera capture session configured.\n");
             csession = session;
+            final List<CaptureRequest> requests = makeRequests(surfaces);
+            if(requests == null) return;
+
             try {
-                CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                b.addTarget(surface);
-                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
-                b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
-                b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
-                b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
-                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
-                b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
-
-
-                // extra params for non-RAW
-                b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-                //b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(1, 1, 1, 1));
-                b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, new ColorSpaceTransform
-                        (new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1})); // identity matrix
-                b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
-                b.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
-                b.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(tonemap, tonemap, tonemap));
-
-
-                App.log().append("camera initialization has succeeded.\n");
-
-                final CaptureRequest request = b.build();
-
                 // do an initial capture to query the CaptureResult
                 initial_received = false;
-                csession.capture(request, initialCallback, fhandler);
+                csession.capture(requests.get(0), initialCallback, fhandler);
 
                 // wait 3 seconds so the CPU can keep up with the buffers
                 chandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         try {
-                            csession.setRepeatingRequest(request, captureCallback, fhandler);
+                            if(yuv) {
+                                csession.setRepeatingBurst(requests, captureCallback, fhandler);
+                            } else {
+                                csession.setRepeatingRequest(requests.get(0), captureCallback, fhandler);
+                            }
                         } catch (CameraAccessException e) {
                             e.printStackTrace();
                         }
                     }
                 }, 3000L);
 
+
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
         }
 
+
         @Override
         public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-
+            App.log().append("Configure failed!  Switching to single-buffer mode");
+            N_ALLOC = 1;
+            createSession();
         }
 
         @Override
@@ -457,7 +490,7 @@ public class Camera {
                 e.printStackTrace();
             }
         } else {
-            create_session();
+            createSession();
         }
 
     }
@@ -465,14 +498,22 @@ public class Camera {
     public void stop(boolean quit) {
         configured = false;
 
+        for(Surface s: surfaces) s.release();
+        
         csession.close();
         if(ireader != null) {
             ireader.close();
             ireader = null;
         }
-        if(abuf != null) {
-            abuf.destroy();
-            abuf = null;
+        if(araw != null) {
+            araw.destroy();
+            araw = null;
+        }
+        if(ayuv != null) {
+            for(Allocation a: ayuv) {
+                a.destroy();
+            }
+            ayuv = null;
         }
         if(quit) {
             cdevice.close();
@@ -561,7 +602,7 @@ public class Camera {
                 initial_received = true;
                 return;
             }
-            Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
+            Frame frame = ((RAWFrame.Builder) fbuilder).addImage(imageReader.acquireNextImage());
             if (frame != null) {
                 fcallback.onFrame(frame, num_frames.incrementAndGet());
             }
@@ -580,7 +621,7 @@ public class Camera {
             fhandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    Frame frame = fbuilder.addBuffer();
+                    Frame frame = ((YUVFrame.Builder) fbuilder).addBuffer(allocation);
                     if (frame != null) {
                         fcallback.onFrame(frame, num_frames.incrementAndGet());
                     }

@@ -1,13 +1,18 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
 import android.renderscript.Allocation;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.util.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.Lock;
 
 class RAWFrame extends Frame {
@@ -64,5 +69,51 @@ class RAWFrame extends Frame {
     @Override
     public void close() {
         image.close();
+    }
+
+    static class Builder implements Frame.Builder {
+
+        private final Queue<Image> bImageQueue = new ArrayBlockingQueue<>(5);
+        private final Queue<TotalCaptureResult> bResultQueue = new ArrayBlockingQueue<>(5);
+        private final Allocation bBuf;
+
+        Builder(Allocation buf) {
+            bBuf = buf;
+        }
+
+        @Nullable
+        Frame addImage(Image image) {
+            while(bResultQueue.size() > 0) {
+                TotalCaptureResult r = bResultQueue.poll();
+                Long timestamp = r.get(CaptureResult.SENSOR_TIMESTAMP);
+                if(timestamp == image.getTimestamp()) {
+                    return new RAWFrame(image, r, bBuf);
+                }
+            }
+
+            while(!bImageQueue.offer(image)) {
+                bImageQueue.poll().close();
+            }
+            return null;
+        }
+
+        @Nullable
+        public Frame addResult(@NonNull TotalCaptureResult result) {
+            Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+            if (timestamp == null) return null;
+
+            while (bImageQueue.size() > 0) {
+                Image img = bImageQueue.poll();
+                if (img.getTimestamp() == timestamp) {
+                    return new RAWFrame(img, result, bBuf);
+                }
+                img.close();
+            }
+
+            while(!bResultQueue.offer(result)) {
+                bResultQueue.poll();
+            }
+            return null;
+        }
     }
 }
