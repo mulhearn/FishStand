@@ -56,10 +56,9 @@ public class Camera {
     private Handler frame_handler;
 
     private ImageReader ireader;
-    private Allocation abuf;
     private Surface surface;
 
-    private Frame.Builder frame_builder;
+    private Frame.Producer frame_producer;
     private Frame.OnFrameCallback frame_callback;
 
     private int max_images=10;
@@ -194,39 +193,15 @@ public class Camera {
 
     private void create_session() {
         App.log().append("Creating capture session\n");
-        RenderScript rs = App.getRenderScript();
 
-        frame_builder = new Frame.Builder();
-
-        if(yuv) {
-            App.log().append("Using YUV.\n");
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
-                            .setX(raw_size.getWidth())
-                            .setY(raw_size.getHeight())
-                            .setYuvFormat(ImageFormat.YUV_420_888)
-                            .create(),
-                    Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
-            surface = abuf.getSurface();
-            abuf.setOnBufferAvailableListener(frame_builder);
+        if (yuv) {
+            frame_producer = null;
+            surface = null;
         } else {
-            App.log().append("Using RAW.\n");
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                            .setX(raw_size.getWidth())
-                            .setY(raw_size.getHeight())
-                            .create(),
-                            Allocation.USAGE_SCRIPT);
             ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
             surface = ireader.getSurface();
-            ireader.setOnImageAvailableListener(frame_builder, frame_handler);
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                    .setX(raw_size.getWidth())
-                    .setY(raw_size.getHeight())
-                    .create(),
-                    Allocation.USAGE_SCRIPT);
+            frame_producer = new RawFrame.Producer(ireader, frame_handler, frame_callback);
         }
-        frame_builder.setHandler(frame_handler);
-        frame_builder.setAllocation(abuf);
-        frame_builder.setOnFrameCallback(frame_callback);
 
         List<Surface> outputs = new ArrayList<>(1);
         outputs.add(surface);
@@ -297,7 +272,7 @@ public class Camera {
 
                 App.log().append("camera initialization has succeeded.\n");
 
-                csession.setRepeatingRequest(b.build(), frame_builder, frame_handler);
+                csession.setRepeatingRequest(b.build(), frame_producer.getCaptureCallback(), frame_handler);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -321,7 +296,7 @@ public class Camera {
         yuv = cfg.getBoolean("yuv", false);
         int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
         long exposure_ref = cfg.getLong("exposure_reference", max_exp);
-        double iso_scale = cfg.getDouble("exposure_scale", 1.0);
+        double iso_scale = cfg.getDouble("sensitivity_scale", 1.0);
         double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
         iso = (int) (iso_scale * iso_ref);
         exposure = (long) (exposure_scale * exposure_ref);
@@ -355,9 +330,8 @@ public class Camera {
             ireader.close();
             ireader = null;
         }
-        if(abuf != null) {
-            abuf.destroy();
-            abuf = null;
+        if (frame_producer != null){
+            frame_producer.stop();
         }
         if(quit) {
             cdevice.close();

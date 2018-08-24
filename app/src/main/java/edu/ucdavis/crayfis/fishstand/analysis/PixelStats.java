@@ -71,12 +71,12 @@ public class PixelStats implements Analysis {
     public void ProcessFrame(Frame frame) {
         images.incrementAndGet();
 
-        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
+        Allocation buf = frame.getAllocation();
 
         if (YUV) script.forEach_add_YUV(buf);
         else script.forEach_add_RAW(buf);
 
-        ALLOCATION_LOCK.unlock();
+        frame.close();
     }
 
     public void ProcessRun() {
