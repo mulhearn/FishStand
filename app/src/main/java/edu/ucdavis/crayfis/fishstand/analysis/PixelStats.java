@@ -31,7 +31,7 @@ public class PixelStats implements Analysis {
     private final long FILE_SIZE;
     private final int DOWNSAMPLE_STEP;
 
-    private static final ReentrantLock ALLOCATION_LOCK = new ReentrantLock();
+    private static final ReentrantLock script_lock = new ReentrantLock();
 
     public PixelStats(Config cfg) {
 
@@ -71,12 +71,14 @@ public class PixelStats implements Analysis {
     public void ProcessFrame(Frame frame) {
         images.incrementAndGet();
 
-        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
+        Allocation buf = frame.getAllocation();
 
+        script_lock.lock();
         if (YUV) script.forEach_add_YUV(buf);
         else script.forEach_add_RAW(buf);
 
-        ALLOCATION_LOCK.unlock();
+        script_lock.unlock();
+        frame.close();
     }
 
     public void ProcessRun() {

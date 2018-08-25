@@ -46,6 +46,7 @@ public class Photo implements Analysis {
                     frame.getRawBytes(X_OFF, Y_OFF+irow, PHOTO_DIM, 1));
             writer.writeRow(line);
         }
+        frame.close();
         writer.close();
 
     }

@@ -52,7 +52,7 @@ public class Cosmics implements Analysis {
 
     private static int thresh = 1023;
 
-    private static final ReentrantLock ALLOCATION_LOCK = new ReentrantLock();
+    private static final ReentrantLock script_lock = new ReentrantLock();
 
     public Cosmics(Config cfg) {
 
@@ -108,9 +108,9 @@ public class Cosmics implements Analysis {
 
         final int pixN;
 
+        Allocation buf = frame.getAllocation();
 
-        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
-
+        script_lock.lock();
         // RS doesn't seem to allow overloading
         if(aweights == null) {
             if(YUV) script.forEach_histogram_YUV(buf);
@@ -132,10 +132,11 @@ public class Cosmics implements Analysis {
             ay.copy1DRangeToUnchecked(0, pixN, pix_y_evt);
             aval.copy1DRangeToUnchecked(0, pixN, pix_val_evt);
         }
+        script_lock.unlock();
+        frame.close();
 
-        ALLOCATION_LOCK.unlock();
-
-        // TODO: should we add nearby pixels too?
+        // TODO: should we add nearby pixels too?  YES!
+        // First pdate raw data interface of Frame to provide window centered on specified pixel ...
         for(int i=0; i<pixN; i++) {
             pixX.add((short)pix_x_evt[i]);
             pixY.add((short)pix_y_evt[i]);
