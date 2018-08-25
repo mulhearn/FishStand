@@ -108,8 +108,7 @@ public class Cosmics implements Analysis {
 
         final int pixN;
 
-
-        Allocation buf = frame.asAllocation(ALLOCATION_LOCK);
+        Allocation buf = frame.getAllocation();
 
         // RS doesn't seem to allow overloading
         if(aweights == null) {
@@ -133,7 +132,7 @@ public class Cosmics implements Analysis {
             aval.copy1DRangeToUnchecked(0, pixN, pix_val_evt);
         }
 
-        ALLOCATION_LOCK.unlock();
+        frame.close();
 
         // TODO: should we add nearby pixels too?
         for(int i=0; i<pixN; i++) {

@@ -57,21 +57,18 @@ public class Camera {
     private CameraCharacteristics cchars;
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
-
-    private HandlerThread cthread;
-    private Handler chandler;
-
-    private HandlerThread fthread;
-    private Handler fhandler;
+    
+    private HandlerThread camera_thread;
+    private Handler camera_handler;
+    
+    private HandlerThread frame_thread;
+    private Handler frame_handler;
 
     private ImageReader ireader;
-    private Allocation araw;
-    private List<Allocation> ayuv;
-    private List<Surface> surfaces;
+    private Surface surface;
 
-    private Frame.Builder fbuilder;
-    private Frame.OnFrameCallback fcallback;
-    private AtomicInteger num_frames;
+    private Frame.Producer frame_producer;
+    private Frame.OnFrameCallback frame_callback;
 
     private static final int max_images=10;
 
@@ -267,38 +264,20 @@ public class Camera {
 
     private void createSession() {
         App.log().append("Creating capture session\n");
-        RenderScript rs = App.getRenderScript();
-        surfaces = new ArrayList<>();
-        if(yuv) {
-            App.log().append("Using YUV.\n");
-            ayuv = new ArrayList<>(N_ALLOC);
-            for(int i=0; i<N_ALLOC; i++) {
-                Allocation a = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
-                                .setX(size.getWidth())
-                                .setY(size.getHeight())
-                                .setYuvFormat(ImageFormat.YUV_420_888)
-                                .create(),
-                        Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
-                ayuv.add(a);
-                surfaces.add(a.getSurface());
-                a.setOnBufferAvailableListener(bufferCallback);
-            }
-            fbuilder = new YUVFrame.Builder(ayuv);
+
+        if (yuv) {
+            frame_producer = null;
+            surface = null;
         } else {
-            App.log().append("Using RAW.\n");
-            ireader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
-            surfaces = Arrays.asList(ireader.getSurface());
-            ireader.setOnImageAvailableListener(imageCallback, fhandler);
-            araw = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                    .setX(size.getWidth())
-                    .setY(size.getHeight())
-                    .create(),
-                    Allocation.USAGE_SCRIPT);
-            fbuilder = new RAWFrame.Builder(araw);
+            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
+            surface = ireader.getSurface();
+            frame_producer = new RawFrame.Producer(ireader, frame_handler, frame_callback);
         }
 
+        List<Surface> outputs = new ArrayList<>(1);
+        outputs.add(surface);
         try {
-            cdevice.createCaptureSession(surfaces, sessionCallback, chandler);
+            cdevice.createCaptureSession(outputs, sessionCallback, camera_handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -357,11 +336,11 @@ public class Camera {
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
             App.log().append("Camera is closed.\n");
-            cthread.quitSafely();
-            fthread.quitSafely();
+            camera_thread.quitSafely();
+            frame_thread.quitSafely();
             try {
-                cthread.join();
-                fthread.join();
+                camera_thread.join();
+                frame_thread.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -371,11 +350,11 @@ public class Camera {
         @Override
         public void onError(@NonNull CameraDevice camera, int error) {
             App.log().append("Camera in error! " + error + "\n");
-            cthread.quitSafely();
-            fthread.quitSafely();
+            camera_thread.quitSafely();
+            frame_thread.quitSafely();
             try {
-                cthread.join();
-                fthread.join();
+                camera_thread.join();
+                frame_thread.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -389,30 +368,29 @@ public class Camera {
         public void	onConfigured(@NonNull CameraCaptureSession session){
             App.log().append("Camera capture session configured.\n");
             csession = session;
-            final List<CaptureRequest> requests = makeRequests(surfaces);
+            final List<CaptureRequest> requests = makeRequests(frame_producer.getSurfaces());
             if(requests == null) return;
 
             try {
                 // do an initial capture to query the CaptureResult
                 initial_received = false;
-                csession.capture(requests.get(0), initialCallback, fhandler);
+                csession.capture(requests.get(0), initialCallback, frame_handler);
 
                 // wait 3 seconds so the CPU can keep up with the buffers
-                chandler.postDelayed(new Runnable() {
+                camera_handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         try {
                             if(yuv) {
-                                csession.setRepeatingBurst(requests, captureCallback, fhandler);
+                                csession.setRepeatingBurst(requests, frame_producer.getCaptureCallback(), frame_handler);
                             } else {
-                                csession.setRepeatingRequest(requests.get(0), captureCallback, fhandler);
+                                csession.setRepeatingRequest(requests.get(0), frame_producer.getCaptureCallback(), frame_handler);
                             }
                         } catch (CameraAccessException e) {
                             e.printStackTrace();
                         }
                     }
                 }, 3000L);
-
 
             } catch (CameraAccessException e) {
                 e.printStackTrace();
@@ -432,7 +410,6 @@ public class Camera {
             App.log().append("Camera capture session closed\n");
         }
     };
-
 
 
     public void configure(Config cfg) {
@@ -469,51 +446,40 @@ public class Camera {
             return;
         }
 
-        fcallback = callback;
-        num_frames = new AtomicInteger();
+        frame_callback = callback;
 
-        if(cthread == null || !cthread.isAlive()) {
-            cthread = new HandlerThread("Camera");
-            cthread.start();
-            chandler = new Handler(cthread.getLooper());
+        if(camera_thread == null || !camera_thread.isAlive()) {
+            camera_thread = new HandlerThread("Camera");
+            camera_thread.start();
+            camera_handler = new Handler(camera_thread.getLooper());
         }
-        if(fthread == null || !fthread.isAlive()) {
-            fthread = new HandlerThread("Frames");
-            fthread.start();
-            fhandler = new Handler(fthread.getLooper());
+        if(frame_thread == null || !frame_thread.isAlive()) {
+            frame_thread = new HandlerThread("Frames");
+            frame_thread.start();
+            frame_handler = new Handler(frame_thread.getLooper());
         }
 
         if(cdevice == null) {
             try {
-                cmanager.openCamera(cid, deviceCallback, chandler);
+                cmanager.openCamera(cid, deviceCallback, camera_handler);
             } catch (CameraAccessException | SecurityException e) {
                 e.printStackTrace();
             }
         } else {
             createSession();
         }
-
     }
 
     public void stop(boolean quit) {
         configured = false;
 
-        for(Surface s: surfaces) s.release();
-        
         csession.close();
         if(ireader != null) {
             ireader.close();
             ireader = null;
         }
-        if(araw != null) {
-            araw.destroy();
-            araw = null;
-        }
-        if(ayuv != null) {
-            for(Allocation a: ayuv) {
-                a.destroy();
-            }
-            ayuv = null;
+        if (frame_producer != null){
+            frame_producer.stop();
         }
         if(quit) {
             cdevice.close();
@@ -580,53 +546,6 @@ public class Camera {
             }
 
             App.log().append(sb.toString());
-        }
-    };
-
-    private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-            Frame frame = fbuilder.addResult(result);
-            if (frame != null) {
-                fcallback.onFrame(frame, num_frames.incrementAndGet());
-            }
-        }
-    };
-
-    private final ImageReader.OnImageAvailableListener imageCallback = new ImageReader.OnImageAvailableListener() {
-        @Override
-        public void onImageAvailable(ImageReader imageReader) {
-            if (!initial_received) {
-                imageReader.acquireNextImage().close();
-                initial_received = true;
-                return;
-            }
-            Frame frame = ((RAWFrame.Builder) fbuilder).addImage(imageReader.acquireNextImage());
-            if (frame != null) {
-                fcallback.onFrame(frame, num_frames.incrementAndGet());
-            }
-        }
-    };
-
-    private final Allocation.OnBufferAvailableListener bufferCallback = new Allocation.OnBufferAvailableListener() {
-        @Override
-        public void onBufferAvailable(final Allocation allocation) {
-            if(!initial_received) {
-                allocation.ioReceive();
-                initial_received = true;
-                return;
-            }
-            // operate in the same thread as captureCallback
-            fhandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Frame frame = ((YUVFrame.Builder) fbuilder).addBuffer(allocation);
-                    if (frame != null) {
-                        fcallback.onFrame(frame, num_frames.incrementAndGet());
-                    }
-                }
-            });
         }
     };
 
