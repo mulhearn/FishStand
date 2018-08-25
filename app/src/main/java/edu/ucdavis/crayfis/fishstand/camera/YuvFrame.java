@@ -5,6 +5,7 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.os.Build;
 import android.os.Handler;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -16,6 +17,7 @@ import android.util.Size;
 import android.view.Surface;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
@@ -32,15 +34,10 @@ public class YuvFrame implements Frame {
         this.result = result;
         this.alloc = alloc;
         this.alloc_lock = alloc_lock;
-        alloc_ready = false;
+        alloc_ready = true;
     }
 
     public Allocation getAllocation(){
-        if (alloc_ready){
-            return alloc;
-        }
-        alloc_lock.acquireUninterruptibly();
-        alloc.ioReceive();
         return alloc;
     }
     public byte[] getRawBytes(int xoff, int yoff, int w, int h){ return null; }
@@ -68,8 +65,9 @@ public class YuvFrame implements Frame {
         // For now we have a single lock...
         private static final Semaphore alloc_lock = new Semaphore(1);
 
-        List<Allocation> allocs;
-        List<Surface> surfaces;
+        private List<Allocation> allocs;
+        private List<Surface> surfaces;
+        private HashMap<Allocation, Semaphore> locks;
 
         // statistics on frame building
         int dropped_images = 0;
@@ -86,6 +84,7 @@ public class YuvFrame implements Frame {
             RenderScript rs = App.getRenderScript();
             allocs = new ArrayList<>(max_allocations);
             surfaces = new ArrayList<>(max_allocations);
+            locks = new HashMap<>();
             for(int i=0; i<max_allocations; i++) {
                 Allocation a = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
                                 .setX(size.getWidth())
@@ -95,6 +94,7 @@ public class YuvFrame implements Frame {
                         Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
                 allocs.add(a);
                 surfaces.add(a.getSurface());
+                locks.put(a, new Semaphore(1));
                 a.setOnBufferAvailableListener(this);
             }
 
@@ -104,43 +104,60 @@ public class YuvFrame implements Frame {
             return surfaces;
         }
 
-        private void buildFrame() {
-            TotalCaptureResult result;
+        private synchronized void buildFrame(final Allocation alloc){
+            Semaphore lock = locks.get(alloc);
+            lock.acquireUninterruptibly();
+
+            alloc.ioReceive();
             long alloc_timestamp = 0;
+
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                alloc_timestamp = alloc.getTimeStamp();
+            }
+
+            Log.i(TAG, "new allocation with timestamp " + alloc_timestamp);
+            TotalCaptureResult result;
             try {
                 result = result_collector.findMatch(alloc_timestamp);
             } catch (CaptureResultCollector.StaleTimeStampException e) {
-                Log.e(TAG, "stale allocation timestamp encountered, discarding this ioreceive.");
+                Log.e(TAG, "stale allocation timestamp encountered, discarding image.");
                 dropped_images += 1;
+                lock.release();
                 return;
             }
 
-            if (result == null){
-                Log.e(TAG, "result deque is empty.");
+            if (result != null){
+                Log.i(TAG, "found frame at time " + alloc_timestamp);
+                matches++;
+
+                Frame frame = new YuvFrame(result, alloc, lock);
+                frame_callback.onFrame(frame, matches);
+
+                // for now just release the allocation...
+                lock.release();
                 return;
             }
 
-            long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-            Log.i(TAG, "match found called with timestamps " + result_timestamp);
-
-            matches++;
-            //Frame frame = new YuvFrame(result, alloc, alloc_lock);
-            //frame_callback.onFrame(frame, matches);
+            dropped_images +=1;
+            Log.e(TAG, "No result available matches allocation... discarding image.");
+            lock.release();
         }
+
 
         // Callback for Buffer Available:
         @Override
-        public void onBufferAvailable(final Allocation allocation) {
+        public void onBufferAvailable(final Allocation alloc) {
             if(!initial_received) {
-                allocation.ioReceive();
+                alloc.ioReceive();
                 initial_received = true;
                 return;
             }
+
             // operate in the same thread as captureCallback
             frame_handler.post(new Runnable() {
                 @Override
                 public void run() {
-                    // ...
+                    buildFrame(alloc);
                 }
             });
         }
@@ -155,7 +172,6 @@ public class YuvFrame implements Frame {
             long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
             Log.i(TAG, "capture complete called with timestamp " + result_timestamp);
             result_collector.add(result);
-            buildFrame();
         }
 
         public CameraCaptureSession.CaptureCallback getCaptureCallback() {

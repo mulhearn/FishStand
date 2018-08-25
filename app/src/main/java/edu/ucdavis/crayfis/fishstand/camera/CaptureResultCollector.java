@@ -29,6 +29,11 @@ public class CaptureResultCollector {
     TotalCaptureResult findMatch(long timestamp) throws StaleTimeStampException{
         TotalCaptureResult result = deque.poll();
 
+        // special case for correct timestamp unavailable:
+        if (timestamp == 0){
+            return result;
+        }
+
         if (result == null){
             return null;
         }
