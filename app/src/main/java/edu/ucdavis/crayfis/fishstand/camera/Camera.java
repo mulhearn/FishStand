@@ -64,13 +64,9 @@ public class Camera {
     private HandlerThread frame_thread;
     private Handler frame_handler;
 
-    private ImageReader ireader;
-    private Surface surface;
-
     private Frame.Producer frame_producer;
     private Frame.OnFrameCallback frame_callback;
 
-    private static final int max_images=10;
 
     // discovered camera properties for RAW format at highest resolution
     private long min_exp=0;
@@ -266,16 +262,14 @@ public class Camera {
         App.log().append("Creating capture session\n");
 
         if (yuv) {
-            frame_producer = null;
-            surface = null;
+            App.log().append("Using YUV image format.");
+            frame_producer = new YuvFrame.Producer(N_ALLOC, raw_size, frame_handler, frame_callback);
         } else {
-            ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
-            surface = ireader.getSurface();
-            frame_producer = new RawFrame.Producer(ireader, frame_handler, frame_callback);
+            App.log().append("Using RAW image format.");
+            frame_producer = new RawFrame.Producer(N_ALLOC, raw_size, frame_handler, frame_callback);
         }
 
-        List<Surface> outputs = new ArrayList<>(1);
-        outputs.add(surface);
+        List<Surface> outputs = frame_producer.getSurfaces();
         try {
             cdevice.createCaptureSession(outputs, sessionCallback, camera_handler);
         } catch (CameraAccessException e) {
@@ -301,7 +295,6 @@ public class Camera {
                 b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
                 b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
                 b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
-
 
                 // extra params for non-RAW
                 b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
@@ -474,10 +467,7 @@ public class Camera {
         configured = false;
 
         csession.close();
-        if(ireader != null) {
-            ireader.close();
-            ireader = null;
-        }
+
         if (frame_producer != null){
             frame_producer.stop();
         }

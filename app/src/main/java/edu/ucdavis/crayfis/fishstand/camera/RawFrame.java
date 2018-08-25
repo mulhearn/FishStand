@@ -1,5 +1,6 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
+import android.graphics.ImageFormat;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
@@ -13,11 +14,11 @@ import android.renderscript.RenderScript;
 import android.renderscript.Type;
 import android.support.annotation.NonNull;
 import android.util.Log;
+import android.util.Size;
 import android.view.Surface;
 
 import java.nio.ByteBuffer;
 import java.nio.ShortBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Semaphore;
@@ -64,12 +65,7 @@ public class RawFrame implements Frame {
             sbuf.get(vals);
         }
 
-        try {
-            alloc_lock.acquire();  //acquireUninterruptibly() ?
-        } catch (Exception e) {
-            Log.e(TAG, e.getMessage());
-            return null;
-        }
+        alloc_lock.acquireUninterruptibly();
         alloc.copyFromUnchecked(vals);
         alloc_ready = true;
 
@@ -93,6 +89,8 @@ public class RawFrame implements Frame {
     static class Producer extends CameraCaptureSession.CaptureCallback implements ImageReader.OnImageAvailableListener, Frame.Producer {
         static final String TAG = "RawFrameProducer";
 
+        ImageReader image_reader;
+
         // externally provided via contstructor:
         final int max_images;
         final Handler frame_handler;
@@ -107,25 +105,29 @@ public class RawFrame implements Frame {
         private static final Semaphore alloc_lock = new Semaphore(1);
         Allocation alloc;
         Surface surface;
-
         // statistics on frame building
         int dropped_images = 0;
         int matches = 0;
 
-        Producer(ImageReader ireader, Handler frame_handler, Frame.OnFrameCallback frame_callback) {
-            max_images = ireader.getMaxImages();
+        // discard the initial image:
+        boolean initial_received;
+
+        Producer(int max_allocations, Size size, Handler frame_handler, Frame.OnFrameCallback frame_callback) {
+            max_images = 10;
+            //this.max_allocations = max_allocations;
+            image_reader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
             image_count.set(0);
             this.frame_handler = frame_handler;
             this.frame_callback = frame_callback;
-            ireader.setOnImageAvailableListener(this, frame_handler);
+            image_reader.setOnImageAvailableListener(this, frame_handler);
 
             RenderScript rs = App.getRenderScript();
             alloc = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                            .setX(ireader.getWidth())
-                            .setY(ireader.getHeight())
+                            .setX(image_reader.getWidth())
+                            .setY(image_reader.getHeight())
                             .create(),
                     Allocation.USAGE_SCRIPT);
-            surface = ireader.getSurface();
+            surface = image_reader.getSurface();
         }
 
         public List<Surface> getSurfaces(){
@@ -178,6 +180,12 @@ public class RawFrame implements Frame {
 
         // Callback for Image Available
         public void onImageAvailable(ImageReader imageReader) {
+            if (!initial_received) {
+                image_reader.acquireNextImage().close();
+                initial_received = true;
+                return;
+            }
+
             Log.i(TAG, "image available called, image timestamp ");
             if (this.image != null) {
                 Log.i(TAG, "dropping stored image with timestamp " + image.getTimestamp());
@@ -210,7 +218,17 @@ public class RawFrame implements Frame {
                     App.log().append("matched frames:  " + matches + "\n")
                             .append("dropped images:   " + dropped_images + "\n")
                             .append("dropped results:  " + result_collector.dropped() + "\n");
-                    surface.release();
+                    if (surface != null) {
+                        surface.release();
+                        surface = null;
+                    }
+                    if(image_reader != null) {
+                        image_reader.close();
+                        image_reader = null;
+                    }
+                    if (alloc != null){
+                        alloc.destroy();
+                    }
                 }
             });
         }
