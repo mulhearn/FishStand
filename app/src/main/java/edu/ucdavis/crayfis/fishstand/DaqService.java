@@ -314,9 +314,9 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         final int verbosity = getEventVerbosity(num_frames);
 
-        Long exp = frame.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-        Long dur = frame.get(CaptureResult.SENSOR_FRAME_DURATION);
-        Integer iso = frame.get(CaptureResult.SENSOR_SENSITIVITY);
+        Long exp = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Long dur = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_FRAME_DURATION);
+        Integer iso = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_SENSITIVITY);
 
         if(exp != null && dur != null && iso != null &&
                 (exp != last_exposure || dur != last_duration || iso != last_iso)

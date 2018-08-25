@@ -49,19 +49,17 @@ public class Camera {
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
     
-    private HandlerThread cthread;
-    private Handler chandler;
+    private HandlerThread camera_thread;
+    private Handler camera_handler;
     
-    private HandlerThread fthread;
-    private Handler fhandler;
+    private HandlerThread frame_thread;
+    private Handler frame_handler;
 
     private ImageReader ireader;
-    private Allocation abuf;
     private Surface surface;
 
-    private Frame.Builder fbuilder;
-    private Frame.OnFrameCallback fcallback;
-    private AtomicInteger num_frames;
+    private Frame.Producer frame_producer;
+    private Frame.OnFrameCallback frame_callback;
 
     private int max_images=10;
 
@@ -195,33 +193,20 @@ public class Camera {
 
     private void create_session() {
         App.log().append("Creating capture session\n");
-        RenderScript rs = App.getRenderScript();
-        if(yuv) {
-            App.log().append("Using YUV.\n");
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U8(rs))
-                    .setX(raw_size.getWidth())
-                    .setY(raw_size.getHeight())
-                    .setYuvFormat(ImageFormat.YUV_420_888)
-                    .create(),
-                    Allocation.USAGE_SCRIPT | Allocation.USAGE_IO_INPUT);
-            surface = abuf.getSurface();
-            abuf.setOnBufferAvailableListener(bufferCallback);
+
+        if (yuv) {
+            frame_producer = null;
+            surface = null;
         } else {
-            App.log().append("Using RAW.\n");
             ireader = ImageReader.newInstance(raw_size.getWidth(), raw_size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
             surface = ireader.getSurface();
-            ireader.setOnImageAvailableListener(imageCallback, fhandler);
-            abuf = Allocation.createTyped(rs, new Type.Builder(rs, Element.U16(rs))
-                    .setX(raw_size.getWidth())
-                    .setY(raw_size.getHeight())
-                    .create(),
-                    Allocation.USAGE_SCRIPT);
+            frame_producer = new RawFrame.Producer(ireader, frame_handler, frame_callback);
         }
-        fbuilder = new Frame.Builder(abuf);
+
         List<Surface> outputs = new ArrayList<>(1);
         outputs.add(surface);
         try {
-            cdevice.createCaptureSession(outputs, sessionCallback, chandler);
+            cdevice.createCaptureSession(outputs, sessionCallback, camera_handler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -239,11 +224,11 @@ public class Camera {
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
             App.log().append("Camera is closed.\n");
-            cthread.quitSafely();
-            fthread.quitSafely();
+            camera_thread.quitSafely();
+            frame_thread.quitSafely();
             try {
-                cthread.join();
-                fthread.join();
+                camera_thread.join();
+                frame_thread.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -253,11 +238,11 @@ public class Camera {
         @Override
         public void onError(@NonNull CameraDevice camera, int error) {
             App.log().append("Camera in error! " + error + "\n");
-            cthread.quitSafely();
-            fthread.quitSafely();
+            camera_thread.quitSafely();
+            frame_thread.quitSafely();
             try {
-                cthread.join();
-                fthread.join();
+                camera_thread.join();
+                frame_thread.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -287,7 +272,7 @@ public class Camera {
 
                 App.log().append("camera initialization has succeeded.\n");
 
-                csession.setRepeatingRequest(b.build(), captureCallback, fhandler);
+                csession.setRepeatingRequest(b.build(), frame_producer.getCaptureCallback(), frame_handler);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -306,31 +291,30 @@ public class Camera {
 
     public void start(Frame.OnFrameCallback callback, Config cfg) {
 
-        fcallback = callback;
-        num_frames = new AtomicInteger();
+        frame_callback = callback;
 
         yuv = cfg.getBoolean("yuv", false);
         int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
         long exposure_ref = cfg.getLong("exposure_reference", max_exp);
-        double iso_scale = cfg.getDouble("exposure_scale", 1.0);
+        double iso_scale = cfg.getDouble("sensitivity_scale", 1.0);
         double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
         iso = (int) (iso_scale * iso_ref);
         exposure = (long) (exposure_scale * exposure_ref);
 
-        if(cthread == null || !cthread.isAlive()) {
-            cthread = new HandlerThread("Camera");
-            cthread.start();
-            chandler = new Handler(cthread.getLooper());
+        if(camera_thread == null || !camera_thread.isAlive()) {
+            camera_thread = new HandlerThread("Camera");
+            camera_thread.start();
+            camera_handler = new Handler(camera_thread.getLooper());
         }
-        if(fthread == null || !fthread.isAlive()) {
-            fthread = new HandlerThread("Frames");
-            fthread.start();
-            fhandler = new Handler(fthread.getLooper());
+        if(frame_thread == null || !frame_thread.isAlive()) {
+            frame_thread = new HandlerThread("Frames");
+            frame_thread.start();
+            frame_handler = new Handler(frame_thread.getLooper());
         }
 
         if(cdevice == null) {
             try {
-                cmanager.openCamera(cid, deviceCallback, chandler);
+                cmanager.openCamera(cid, deviceCallback, camera_handler);
             } catch (CameraAccessException | SecurityException e) {
                 e.printStackTrace();
             }
@@ -346,9 +330,8 @@ public class Camera {
             ireader.close();
             ireader = null;
         }
-        if(abuf != null) {
-            abuf.destroy();
-            abuf = null;
+        if (frame_producer != null){
+            frame_producer.stop();
         }
         if(quit) {
             cdevice.close();
@@ -371,42 +354,5 @@ public class Camera {
     public long getExposure() {
         return exposure;
     }
-
-    private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-            Frame frame = fbuilder.addResult(result);
-            if (frame != null) {
-                fcallback.onFrame(frame, num_frames.incrementAndGet());
-            }
-        }
-    };
-
-    private final ImageReader.OnImageAvailableListener imageCallback = new ImageReader.OnImageAvailableListener() {
-        @Override
-        public void onImageAvailable(ImageReader imageReader) {
-            Frame frame = fbuilder.addImage(imageReader.acquireNextImage());
-            if (frame != null) {
-                fcallback.onFrame(frame, num_frames.incrementAndGet());
-            }
-        }
-    };
-
-    private final Allocation.OnBufferAvailableListener bufferCallback = new Allocation.OnBufferAvailableListener() {
-        @Override
-        public void onBufferAvailable(final Allocation allocation) {
-            // operate in the same thread as captureCallback
-            fhandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Frame frame = fbuilder.addBuffer();
-                    if (frame != null) {
-                        fcallback.onFrame(frame, num_frames.incrementAndGet());
-                    }
-                }
-            });
-        }
-    };
 
 }
