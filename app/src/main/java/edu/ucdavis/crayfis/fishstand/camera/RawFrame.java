@@ -50,6 +50,9 @@ public class RawFrame implements Frame {
         if (alloc_ready){
             return alloc;
         }
+        if (alloc == null){
+            return null;
+        }
 
         Image.Plane plane = image.getPlanes()[0];
         ByteBuffer buf = plane.getBuffer();
@@ -194,12 +197,21 @@ public class RawFrame implements Frame {
                 dropped_images += 1;
                 image = null;
             }
+
             if (image_count.get() < max_images-2) {
-                image = imageReader.acquireLatestImage();
+                image = imageReader.acquireNextImage();
+                if (image == null){
+                    Log.i(TAG, "null image received in callback...  ignoring.");
+                    return;
+                }
                 Log.i(TAG, "keeping new image with timestamp " + image.getTimestamp());
                 image_count.incrementAndGet();
             } else {
-                Image image = imageReader.acquireLatestImage();
+                Image image = imageReader.acquireNextImage();
+                if (image == null){
+                    Log.i(TAG, "null image received in callback...  ignoring.");
+                    return;
+                }
                 Log.i(TAG, "dropping new image with timestamp " + image.getTimestamp());
                 image.close();
                 dropped_images += 1;
@@ -218,17 +230,19 @@ public class RawFrame implements Frame {
                     App.log().append("matched frames:  " + matches + "\n")
                             .append("dropped images:   " + dropped_images + "\n")
                             .append("dropped results:  " + result_collector.dropped() + "\n");
-                    if (surface != null) {
-                        surface.release();
-                        surface = null;
-                    }
-                    if(image_reader != null) {
-                        image_reader.close();
-                        image_reader = null;
-                    }
-                    if (alloc != null){
-                        alloc.destroy();
-                    }
+                    //this blows up jobs already running in the Aync thread...
+                    //if (surface != null) {
+                    //    surface.release();
+                    //    surface = null;
+                    //}
+                    //if(image_reader != null) {
+                    //    image_reader.close();
+                    //    image_reader = null;
+                    //}
+                    //if (alloc != null){
+                    //    alloc.destroy();
+                    //    alloc = null;
+                    //}
                 }
             });
         }

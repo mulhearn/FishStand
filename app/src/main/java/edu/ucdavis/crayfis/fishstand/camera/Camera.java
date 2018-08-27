@@ -282,6 +282,8 @@ public class Camera {
         List<CaptureRequest> requests = new ArrayList<>();
         for(Surface s : surfaces) {
             try {
+                App.log().append("setting exposure to " + exposure + "\n");
+
                 CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                 b.addTarget(s);
                 b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
@@ -413,6 +415,8 @@ public class Camera {
         double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
         iso = (int) (iso_scale * iso_ref);
         exposure = (long) (exposure_scale * exposure_ref);
+        Log.i(TAG, "setting exposure to " + exposure);
+        Log.i(TAG, "setting sensitivity to " + iso);
 
         String res_str = cfg.getString("resolution", null);
         if(yuv && res_str != null && res_str.matches("\\d+x\\d+")) {
@@ -522,10 +526,10 @@ public class Camera {
 
             Pair<Double, Double>[] noise_coeffs = result.get(CaptureResult.SENSOR_NOISE_PROFILE);
             if(noise_coeffs != null) {
-                sb.append("noise profile\n")
-                        .append("R: " + noise_coeffs[0].toString() + "\n")
-                        .append("G: " + noise_coeffs[1].toString() + "\n")
-                        .append("B: " + noise_coeffs[2].toString() + "\n");
+                sb.append("noise_coeffs:\n");
+                for (int i=0; i<noise_coeffs.length; i++){
+                    sb.append("first:  " + noise_coeffs[i].first + " second:  " + noise_coeffs[i].second + "\n");
+                }
             }
 
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
