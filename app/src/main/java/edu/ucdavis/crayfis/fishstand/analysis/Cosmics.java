@@ -55,11 +55,7 @@ public class Cosmics implements Analysis {
 
     private static final ReentrantLock script_lock = new ReentrantLock();
 
-    private Calib calib;
-
     public Cosmics(Config cfg) {
-
-        calib = new Calib();
 
 
         YUV = cfg.getBoolean("yuv", false);
@@ -70,6 +66,8 @@ public class Cosmics implements Analysis {
 
 	    int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
+
+        Calib calib = new Calib(nx,ny);
 
         RenderScript rs = App.getRenderScript();
         script = new ScriptC_cosmics(rs);
@@ -88,22 +86,13 @@ public class Cosmics implements Analysis {
         script.set_gMaxN(MAX_N);
         script.set_gThresh(thresh);
 
-        //hotXY.add(new Pair<>(1243, 924));
-        //hotXY.add(new Pair<>(1243, 923));
-        //hotXY.add(new Pair<>(1165, 741));
-
-        if(hotXY.size() > 0) {
+        aweights = null;
+        if (calib.isCalibrated()) {
             aweights = Allocation.createTyped(rs, new Type.Builder(rs, Element.F16(rs))
                     .setX(nx)
                     .setY(ny)
                     .create());
-
-            script.forEach_setToUnity(aweights, aweights);
-            for(int i=0; i<hotXY.size(); i++) {
-                Pair<Integer, Integer> xy = hotXY.get(i);
-                aweights.copy2DRangeFrom(xy.first, xy.second, 1, 1,
-                        new short[]{Float.valueOf(0f).shortValue()});
-            }
+            aweights.copyFromUnchecked(calib.getCombinedWeights());
         }
 
         App.log().append("thresh: " + thresh + "\n");
