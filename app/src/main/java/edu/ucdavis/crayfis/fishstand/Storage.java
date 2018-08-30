@@ -11,6 +11,16 @@ import java.io.OutputStream;
 public class Storage {
     public static final String WORK_DIR = "FishStand";
 
+    public static File getFile(String filename) {
+        File path = new File(Environment.getExternalStoragePublicDirectory(""),
+                Storage.WORK_DIR);
+        path.mkdirs();
+        File file = new File(path, filename);
+        return file;
+    }
+
+
+
     public static OutputStream newOutput(String filename){
         File path = new File(Environment.getExternalStoragePublicDirectory(""),
                 WORK_DIR);

@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 import edu.ucdavis.crayfis.fishstand.App;
+import edu.ucdavis.crayfis.fishstand.Calib;
 import edu.ucdavis.crayfis.fishstand.Config;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.ScriptC_cosmics;
@@ -54,7 +55,12 @@ public class Cosmics implements Analysis {
 
     private static final ReentrantLock script_lock = new ReentrantLock();
 
+    private Calib calib;
+
     public Cosmics(Config cfg) {
+
+        calib = new Calib();
+
 
         YUV = cfg.getBoolean("yuv", false);
         MAX_N = cfg.getInteger("max_n", 120);

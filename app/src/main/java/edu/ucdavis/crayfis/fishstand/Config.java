@@ -179,10 +179,7 @@ public class Config {
     }
 
     private static File getFile(String filename) {
-        File path = new File(Environment.getExternalStoragePublicDirectory(""),
-                Storage.WORK_DIR);
-        path.mkdirs();
-        File cfg_file = new File(path, filename);
+        File cfg_file = Storage.getFile(filename);
 
         if (! cfg_file.exists()) {
             try {
