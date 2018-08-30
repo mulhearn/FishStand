@@ -334,6 +334,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             App.log().append("capture complete with exposure " + exp
                     + " duration " + dur
                     + " sensitivity " + iso + "\n");
+            long request = App.getCamera().getExposure();
+            if (exp != request){
+                App.log().append("reported exposure " + exp + " does not match request " + request + "\n");
+            }
         }
 
         if (num_frames == num + 1) {
