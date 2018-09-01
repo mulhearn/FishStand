@@ -106,6 +106,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         }
     };
 
+    private AtomicInteger processing;
     private AtomicInteger events;
 
     private String job_tag;
@@ -217,6 +218,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         run_finished = false;
         events = new AtomicInteger();
+        processing = new AtomicInteger();
 
         job_tag = cfg.getString("tag", "unspecified");
         num     = cfg.getInteger("num", 1);
@@ -257,13 +259,25 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
     private void Stop() {
         App.log().append("run stopping\n");
+        App.getCamera().stop();
+        EndRun();
+    }
+
+    private void EndRun(){
+        // wait for all jobs to finish...
+        if (processing.get() > 0){
+            Runnable r = new Runnable(){public void run(){EndRun();};};
+            broadcast_handler.postDelayed(r,1000);
+            return;
+        }
 
         boolean restart = macro != null && macro.hasNext() && run_finished;
-        App.getCamera().stop(!restart);
 
         if (analysis != null){
             analysis.ProcessRun();
         }
+
+        App.getCamera().close();
 
         App.log().append("events:   " + events.intValue() + "\n");
 
@@ -340,17 +354,22 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             }
         }
 
-        if (num_frames == num + 1) {
+        if (num_frames > num) {
             frame.close();
-            run_finished = true;
-            App.updateState(App.STATE.STOPPING);
+            if (num_frames == num+1) {
+                App.updateState(App.STATE.STOPPING);
+                run_finished = true;
+            }
+            return;
         } else if(num_frames <= num) {
             try {
                 AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
                     @Override
                     public void run() {
                         if (analysis != null){
+                            processing.incrementAndGet();
                             analysis.ProcessFrame(frame);
+                            processing.decrementAndGet();
                         }
 
                         try {

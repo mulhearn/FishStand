@@ -115,7 +115,12 @@ public class RawFrame implements Frame {
         // discard the initial image:
         boolean initial_received;
 
+        // stop has been called
+        boolean stop_called;
+
         Producer(int max_allocations, Size size, Handler frame_handler, Frame.OnFrameCallback frame_callback) {
+            initial_received = false;
+            stop_called = false;
             max_images = 10;
             //this.max_allocations = max_allocations;
             image_reader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, max_images);
@@ -139,6 +144,9 @@ public class RawFrame implements Frame {
 
 
         private void buildFrame() {
+            if (stop_called){
+                return;
+            }
             if (image == null) {
                 return;
             }
@@ -215,6 +223,7 @@ public class RawFrame implements Frame {
                 Log.i(TAG, "dropping new image with timestamp " + image.getTimestamp());
                 image.close();
                 dropped_images += 1;
+                return;
             }
             buildFrame();
         }
@@ -224,27 +233,26 @@ public class RawFrame implements Frame {
         }
 
         public void stop() {
-            frame_handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    App.log().append("matched frames:  " + matches + "\n")
-                            .append("dropped images:   " + dropped_images + "\n")
-                            .append("dropped results:  " + result_collector.dropped() + "\n");
-                    //this blows up jobs already running in the Aync thread...
-                    //if (surface != null) {
-                    //    surface.release();
-                    //    surface = null;
-                    //}
-                    //if(image_reader != null) {
-                    //    image_reader.close();
-                    //    image_reader = null;
-                    //}
-                    //if (alloc != null){
-                    //    alloc.destroy();
-                    //    alloc = null;
-                    //}
-                }
-            });
+            stop_called = true;
+            App.log().append("matched frames:  " + matches + "\n")
+                    .append("dropped images:   " + dropped_images + "\n")
+                    .append("dropped results:  " + result_collector.dropped() + "\n");
         }
+
+        public void close(){
+            if (surface != null) {
+                surface.release();
+                surface = null;
+            }
+            if(image_reader != null) {
+                image_reader.close();
+                image_reader = null;
+            }
+            if (alloc != null){
+                alloc.destroy();
+                alloc = null;
+            }
+        }
+
     }
 }

@@ -18,6 +18,7 @@ public interface Frame {
         List<Surface> getSurfaces();
         CameraCaptureSession.CaptureCallback getCaptureCallback();
         void stop();
+        void close();
     }
 
     Allocation getAllocation();

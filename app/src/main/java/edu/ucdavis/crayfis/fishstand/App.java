@@ -86,6 +86,9 @@ public class App extends Application {
         return instance.state;
     }
     public static synchronized void updateState(STATE new_state, String filename) {
+        if (instance.state == new_state){
+            return;
+        }
         instance.state = new_state;
         Intent intent = new Intent(ACTION_STATE_CHANGE);
         intent.putExtra(EXTRA_NEW_STATE, new_state);

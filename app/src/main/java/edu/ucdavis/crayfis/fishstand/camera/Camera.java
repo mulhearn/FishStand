@@ -467,17 +467,22 @@ public class Camera {
         }
     }
 
-    public void stop(boolean quit) {
+    public void stop() {
         configured = false;
-
         csession.close();
-
         if (frame_producer != null){
             frame_producer.stop();
         }
-        if(quit) {
+    }
+
+    public void close(){
+        if (cdevice != null) {
             cdevice.close();
             cdevice = null;
+        }
+        if (frame_producer != null){
+            frame_producer.close();
+            frame_producer = null;
         }
     }
 

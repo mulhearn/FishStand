@@ -82,7 +82,6 @@ public class PixelStats implements Analysis {
     }
 
     public void ProcessRun() {
-
         final int[] sum_buf = new int[num_pixels];
         final long[] ssq_buf = new long[num_pixels];
 

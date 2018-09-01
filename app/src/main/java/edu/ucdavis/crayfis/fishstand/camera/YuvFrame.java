@@ -75,6 +75,7 @@ public class YuvFrame implements Frame {
 
         // throw out initial capture:
         boolean initial_received = false;
+        boolean stop_called = false;
 
         Producer(int max_allocations, Size size, Handler frame_handler, Frame.OnFrameCallback frame_callback) {
             this.max_allocations = max_allocations;
@@ -105,6 +106,9 @@ public class YuvFrame implements Frame {
         }
 
         private synchronized void buildFrame(final Allocation alloc){
+            if (stop_called)
+                return;
+
             Semaphore lock = locks.get(alloc);
 
             lock.acquireUninterruptibly();
@@ -180,23 +184,22 @@ public class YuvFrame implements Frame {
         }
 
         public void stop() {
-            frame_handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    App.log().append("matched frames:  " + matches + "\n")
-                            .append("dropped images:   " + dropped_images + "\n")
-                            .append("dropped results:  " + result_collector.dropped() + "\n");
-                    //if (surfaces != null) {
-                    //    for (Surface s : surfaces) s.release();
-                    //    surfaces = null;
-                    //}
-                    // TODO: causes null locks to be encountered...  perhaps need post stop delayed?
-                    //if (allocs != null) {
-                    //    for (Allocation a : allocs) a.destroy();
-                    //    allocs = null;
-                    //}
-                }
-            });
+            stop_called = true;
+
+            App.log().append("matched frames:  " + matches + "\n")
+                    .append("dropped images:   " + dropped_images + "\n")
+                    .append("dropped results:  " + result_collector.dropped() + "\n");
+        }
+
+        public void close(){
+            if (surfaces != null) {
+                for (Surface s : surfaces) s.release();
+                surfaces = null;
+            }
+            if (allocs != null) {
+                for (Allocation a : allocs) a.destroy();
+                allocs = null;
+            }
         }
     }
 }
