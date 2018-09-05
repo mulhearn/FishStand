@@ -23,14 +23,14 @@ import java.util.concurrent.Semaphore;
 
 import edu.ucdavis.crayfis.fishstand.App;
 
-public class YuvFrame implements Frame {
+class YuvFrame implements Frame {
     private static final String TAG = "YuvFrame";
     private TotalCaptureResult result;
     private Semaphore alloc_lock;
     private Allocation alloc;
     private boolean alloc_ready;
 
-    public YuvFrame(@NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
+    YuvFrame(@NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
         this.result = result;
         this.alloc = alloc;
         this.alloc_lock = alloc_lock;
@@ -64,9 +64,6 @@ public class YuvFrame implements Frame {
 
         // Collection of recent TotalCaptureResults  OPTION B:
         CaptureResultCollector result_collector = new CaptureResultCollector();
-
-        // For now we have a single lock...
-        private static final Semaphore alloc_lock = new Semaphore(1);
 
         private List<Allocation> allocs;
         private List<Surface> surfaces;

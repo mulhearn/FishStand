@@ -25,6 +25,8 @@ public class PixelStats implements Analysis {
 
     private Allocation sum;
     private Allocation ssq;
+    private Allocation max;
+    private Allocation second;
     private ScriptC_pixelstats script;
 
     private final boolean YUV;
@@ -48,6 +50,11 @@ public class PixelStats implements Analysis {
 
         RenderScript rs = App.getRenderScript();
 
+        Type type16 = new Type.Builder(rs, Element.U16(rs))
+                .setX(nx)
+                .setY(ny)
+                .create();
+
         Type type32 = new Type.Builder(rs, Element.U32(rs))
                 .setX(nx)
                 .setY(ny)
@@ -60,10 +67,14 @@ public class PixelStats implements Analysis {
 
         sum = Allocation.createTyped(rs, type32);
         ssq = Allocation.createTyped(rs, type64);
+        max = Allocation.createTyped(rs, type16);
+        second = Allocation.createTyped(rs, type16);
 
         script = new ScriptC_pixelstats(App.getRenderScript());
         script.set_g_sum(sum);
         script.set_g_ssq(ssq);
+        script.set_g_max(max);
+        script.set_g_second(second);
 
         App.log().append("finished allocating memory.\n");
     }
@@ -82,20 +93,32 @@ public class PixelStats implements Analysis {
     }
 
     public void ProcessRun() {
-        final int[] sum_buf = new int[num_pixels];
-        final long[] ssq_buf = new long[num_pixels];
+
+        final int[] sum_buf;
+        final long[] ssq_buf;
+        final short[] max_buf;
+        final short[] second_buf;
 
         synchronized (this) {
-
+            sum_buf = new int[num_pixels];
             sum.copyTo(sum_buf);
             sum.destroy();
 
+            ssq_buf = new long[num_pixels];
             ssq.copyTo(ssq_buf);
             ssq.destroy();
+
+            max_buf = new short[num_pixels];
+            max.copyTo(max_buf);
+            max.destroy();
+
+            second_buf = new short[num_pixels];
+            second.copyTo(second_buf);
+            second.destroy();
         }
 
         if (FILE_SIZE > 0) {
-            WriteOutput(sum_buf, ssq_buf, images.intValue());
+            WriteOutput(sum_buf, ssq_buf, max_buf, second_buf, images.intValue());
         }
         long outer_sum = 0;
         for (int ipix=0; ipix<num_pixels;ipix++){
@@ -113,12 +136,12 @@ public class PixelStats implements Analysis {
     }
 
 
-    private void WriteOutput(int[] sum_buf, long[] ssq_buf, int num_images) {
+    private void WriteOutput(int[] sum_buf, long[] ssq_buf, short[] max_buf, short[] second_buf, int num_images) {
         try {
             int run_num = App.getPref().getInt("run_num", 0);
 
-            // int (sum) + long (ssq) = 12 bytes
-            int pixels_per_file = (int) (FILE_SIZE / 12);
+            // int (sum) + long (ssq) + short (max) + short (second) = 16 bytes
+            int pixels_per_file = (int) (FILE_SIZE / 16);
             int num_pixels = sum_buf.length;
             int num_files = num_pixels / pixels_per_file;
             if(num_pixels % pixels_per_file != 0) {
@@ -161,6 +184,14 @@ public class PixelStats implements Analysis {
                 for (int i = pixel_start; i < pixel_end; i++) {
                     writer.writeLong(ssq_buf[i]);
                 }
+
+                for (int i=pixel_start; i < pixel_end; i++) {
+                    writer.writeShort(max_buf[i]);
+                }
+
+                for (int i=pixel_start; i < pixel_end; i++) {
+                    writer.writeShort(second_buf[i]);
+                }
                 writer.flush();
                 writer.close();
                 out.close();
@@ -192,6 +223,13 @@ public class PixelStats implements Analysis {
 
                 for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
                     writer.writeLong(ssq_buf[i]);
+                }
+
+                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                    writer.writeShort(max_buf[i]);
+                }
+                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                    writer.writeShort(second_buf[i]);
                 }
                 writer.flush();
                 writer.close();

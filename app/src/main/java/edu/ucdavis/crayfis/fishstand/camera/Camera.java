@@ -23,15 +23,10 @@ import android.hardware.camera2.params.RggbChannelVector;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.params.TonemapCurve;
-import android.media.ImageReader;
 import android.graphics.ImageFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.renderscript.Allocation;
-import android.renderscript.Element;
-import android.renderscript.RenderScript;
-import android.renderscript.Type;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -83,7 +78,6 @@ public class Camera {
     private float[] tonemap;
 
     private boolean configured = false;
-    private boolean initial_received = false;
 
 
     public Camera() {
@@ -262,10 +256,10 @@ public class Camera {
         App.log().append("Creating capture session\n");
 
         if (yuv) {
-            App.log().append("Using YUV image format.");
-            frame_producer = new YuvFrame.Producer(N_ALLOC, raw_size, frame_handler, frame_callback);
+            App.log().append("Using YUV image format.\n");
+            frame_producer = new YuvFrame.Producer(N_ALLOC, size, frame_handler, frame_callback);
         } else {
-            App.log().append("Using RAW image format.");
+            App.log().append("Using RAW image format.\n");
             frame_producer = new RawFrame.Producer(N_ALLOC, raw_size, frame_handler, frame_callback);
         }
 
@@ -368,7 +362,6 @@ public class Camera {
 
             try {
                 // do an initial capture to query the CaptureResult
-                initial_received = false;
                 csession.capture(requests.get(0), initialCallback, frame_handler);
 
                 // wait 3 seconds so the CPU can keep up with the buffers
@@ -376,7 +369,7 @@ public class Camera {
                     @Override
                     public void run() {
                         try {
-                            if(yuv) {
+                            if(yuv && N_ALLOC > 1) {
                                 csession.setRepeatingBurst(requests, frame_producer.getCaptureCallback(), frame_handler);
                             } else {
                                 csession.setRepeatingRequest(requests.get(0), frame_producer.getCaptureCallback(), frame_handler);
@@ -425,6 +418,7 @@ public class Camera {
         } else {
             size = raw_size;
         }
+        App.log().append("Size = " + size + "\n");
 
         int saturation = cfg.getInteger("saturation", 1023);
         if(saturation == 1023) {

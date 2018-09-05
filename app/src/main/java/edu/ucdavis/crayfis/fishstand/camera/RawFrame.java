@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ucdavis.crayfis.fishstand.App;
 
-public class RawFrame implements Frame {
+class RawFrame implements Frame {
     private static final String TAG = "RawFrame";
     // tracking the image count ensures we don't acquire more images then allocated image buffers.
     //   ... even though frame building is single threaded, processing images need not be.
@@ -40,7 +40,7 @@ public class RawFrame implements Frame {
     private int height;
 
 
-    public RawFrame(@NonNull Image image, @NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
+    RawFrame(@NonNull Image image, @NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
         this.result = result;
         this.image = image;
         this.alloc = alloc;
