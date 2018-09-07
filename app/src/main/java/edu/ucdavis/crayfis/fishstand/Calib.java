@@ -7,15 +7,20 @@ import java.io.InputStream;
 public class Calib {
     private static final String TAG = "Calib";
 
+    public static final int DENOM = 1024;
+
     // have calibrations been successfully read:
     private boolean calibrated;
     public boolean isCalibrated(){ return calibrated; }
 
+    // image width and height:
+    private int width;
+    private int height;
+
+
     // hot pixel calibration:
     private int num_hot;
     private int[] hot;
-
-    public int[] getHotPixelList(){ return hot; }
 
     // lens shading weight calibration:
     private int nx;
@@ -28,12 +33,32 @@ public class Calib {
 
     // weights at full resolution with hot pixels set to zero, as shorts for RS:
     private short[] combined_weights;
-    public short[] getCombinedWeights(){ return combined_weights; }
+
+    public short[] getCombinedWeights(){
+        if (calibrated) {
+            return combined_weights;
+        } else {
+            short[] tmp = new short[width*height];
+            for (int i=0; i<tmp.length; i++){
+                tmp[i] = 1;
+            }
+            return tmp;
+        }
+    }
+
 
 
 
     public Calib(int width, int height) {
         calibrated = false;
+        this.width = width;
+        this.height = height;
+        readCalibrations();
+    }
+
+    private void readCalibrations(){
+        float max_wgt = 0.0f;
+        float min_wgt = 1.0f;
         App.log().append("reading hot pixel list...\n");
         try {
             InputStream tmp = new FileInputStream(Storage.getFile("hot_pixels.cal"));
@@ -69,7 +94,14 @@ public class Calib {
 
             wgt = new float[num_wgt];
             for (int i=0; i<num_wgt; i++) {
-                wgt[i] = input.readFloat();
+                float w = input.readFloat();
+                wgt[i] = w;
+                if (w < min_wgt){
+                    min_wgt = w;
+                }
+                if (w > max_wgt){
+                    max_wgt = w;
+                }
             }
         } catch (Exception e) {
             App.log().append("Problem reading lens shading weights.\n");
@@ -87,10 +119,8 @@ public class Calib {
         App.log().append("down_sample:  " + ds + "\n");
         App.log().append("lx:           " + lx + "\n");
         App.log().append("ly:           " + ly + "\n");
-        if (num_wgt > 1){
-            App.log().append("weight 0 " + wgt[0] + "\n");
-            App.log().append("weight 1 " + wgt[1] + "\n");
-        }
+        App.log().append("min wgt:      " + min_wgt + "\n");
+        App.log().append("max wgt:      " + max_wgt + "\n");
         App.log().append("Calculating full resolutions weights.\n");
 
         int tot_pixels = nx*ny;
@@ -99,7 +129,8 @@ public class Calib {
         for (int index=0; index<tot_pixels; index++){
             int ix = (index % width) / ds;
             int iy = (index / width) / ds;
-            combined_weights[index] = Float.valueOf(wgt[iy*lx + ix]).shortValue();
+            float w = wgt[iy*lx + ix];
+            combined_weights[index] = Float.valueOf(DENOM*w).shortValue();
         }
         for (int i=0; i<num_hot; i++){
             combined_weights[hot[i]] = 0;

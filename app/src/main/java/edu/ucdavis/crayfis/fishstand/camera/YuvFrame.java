@@ -40,7 +40,10 @@ public class YuvFrame implements Frame {
     public Allocation getAllocation(){
         return alloc;
     }
-    public byte[] getRawBytes(int xoff, int yoff, int w, int h){ return null; }
+
+    public void copyRegion(int xc, int yc, int dx, int dy, short target[], int offset) {
+    }
+
 
     public TotalCaptureResult getTotalCaptureResult(){ return result; }
 

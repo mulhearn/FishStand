@@ -2,71 +2,117 @@
 #pragma rs java_package_name(edu.ucdavis.crayfis.fishstand)
 #pragma rs_fp_relaxed
 
-uint64_t* gHist;
-ushort gThresh;
-uint32_t* gPixX; // these need to be 32-bit, otherwise the addresses get complicated
-uint32_t* gPixY;
-uint32_t* gPixVal;
-uint32_t* gPixN;
-uint gMaxN;
+// output histograms:
+int denom_calib;       // denominator when filling calibrated pixel histogram
+uint64_t* hist_uncal;  // histogram of uncalibrated pixel values -> 64 bit allocation
+uint64_t* hist_calib;  // histogram of calibrated pixel values -> 64 bit allocation
+// output results:
+uint16_t * pixel_output;
 
+#define MAX_HIST 1024
+int max_hist;
+uint32_t local_uncal[MAX_HIST]; // 32 bit local histograms, for use with rsAtomicInc
+uint32_t local_calib[MAX_HIST];
 
-void RS_KERNEL histogram_RAW(ushort raw, uint32_t x, uint32_t y) {
-    volatile uint32_t* addr = &gHist[raw];
-    rsAtomicInc(addr);
+#define MAX_THRESH 10
+int num_thresh;
+int threshold[MAX_THRESH];
+int prescale[MAX_THRESH];
+uint32_t count[MAX_THRESH];
 
-    if (raw > gThresh && *gPixN < gMaxN) {
-        uint pixN = rsAtomicInc(gPixN);
-        *(gPixX+pixN) = x;
-        *(gPixY+pixN) = y;
-        *(gPixVal+pixN) = raw;
+#define MAX_PIXEL 100
+int max_pixel;        // the maximum number of pixels to save (must be less than MAX_PIXEL)
+uint32_t num_pixel;
+uint16_t pixel_x[MAX_PIXEL];
+uint16_t pixel_y[MAX_PIXEL];
+uint16_t highest[MAX_PIXEL];
+
+// raw threshold:
+int raw_thresh;       // initial threshold on raw counts
+
+void init(){
+    num_thresh = 0;
+    for (int i=0; i<=MAX_THRESH;i++){
+        count[i] = 0;
     }
 }
 
-void RS_KERNEL weighted_histogram_RAW(ushort raw, half weight, uint32_t x, uint32_t y) {
-    ushort adjusted = (ushort) (raw * weight);
+void add_threshold(int t, int ps){
+    if (num_thresh >= MAX_THRESH){
+        return;
+    }
+    threshold[num_thresh] = t*denom_calib;
+    prescale[num_thresh]  = ps;
+    num_thresh += 1;
+}
 
-    volatile uint32_t* addr = &gHist[adjusted];
-    rsAtomicInc(addr);
+void set_parameters(int max_hist_, int max_pixel_, int raw_thresh_, int denom_calib_){
+    max_hist = max_hist_;
+    max_pixel = max_pixel_;
+    raw_thresh = raw_thresh_;
+    denom_calib = denom_calib_;
+}
 
-    if (adjusted > gThresh && *gPixN < gMaxN) {
-        uint pixN = rsAtomicInc(gPixN);
-        *(gPixX+pixN) = x;
-        *(gPixY+pixN) = y;
-        *(gPixVal+pixN) = raw;
+
+void start(){
+    num_pixel = 0;
+    for (int i=0; i<=max_hist;i++){
+        local_uncal[i] = 0;
+        local_calib[i] = 0;
     }
 }
 
-void RS_KERNEL histogram_YUV(uchar ychannel, uint32_t x, uint32_t y) {
-    volatile uint32_t* addr = &gHist[ychannel];
-    rsAtomicInc(addr);
-
-    if (ychannel > gThresh && *gPixN < gMaxN) {
-        uint pixN = rsAtomicInc(gPixN);
-        *(gPixX+pixN) = x;
-        *(gPixY+pixN) = y;
-        *(gPixVal+pixN) = ychannel;
+void finish(){
+    for (int i=0; i<=max_hist;i++){
+        hist_uncal[i] += local_uncal[i];
+        hist_calib[i] += local_calib[i];
+    }
+    pixel_output[0] = num_pixel;
+    if (num_pixel > max_pixel){
+        num_pixel = max_pixel;
+    }
+    for (int i=0; i<max_pixel; i++){
+        pixel_output[3*i + 1] = pixel_x[i];
+        pixel_output[3*i + 2] = pixel_y[i];
+        pixel_output[3*i + 3] = highest[i];
     }
 }
 
-void RS_KERNEL weighted_histogram_YUV(uchar ychannel, half weight, uint32_t x, uint32_t y) {
-    ushort adjusted = (uchar) (ychannel * weight);
+void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
+    uint32_t calib = ((uint32_t) hwval) * weight;
 
-    volatile uint32_t* addr = &gHist[adjusted];
-    rsAtomicInc(addr);
+    volatile uint32_t* addr_uncal = &local_uncal[hwval];
+    rsAtomicInc(addr_uncal);
 
-    if (adjusted > gThresh && *gPixN < gMaxN) {
-        uint pixN = rsAtomicInc(gPixN);
-        *(gPixX+pixN) = x;
-        *(gPixY+pixN) = y;
-        *(gPixVal+pixN) = ychannel;
+    volatile uint32_t* addr_calib = &local_calib[calib/denom_calib];
+    rsAtomicInc(addr_calib);
+
+
+    if (hwval > raw_thresh){
+        int i=-1;
+        for (i=num_thresh-1; i>=0; i--){
+            if (calib > threshold[i]){
+                break;
+            }
+        }
+        if (i >= 0){
+            volatile uint32_t* addr_count = &count[i];
+            uint32_t c = rsAtomicInc(addr_count);
+            if ((c % prescale[i]) == 0){
+                volatile uint32_t* addr_pixel = &num_pixel;
+                int ipixel = rsAtomicInc(addr_pixel);
+                if (ipixel < max_pixel){
+                    pixel_x[ipixel] = x;
+                    pixel_y[ipixel] = y;
+                    highest[ipixel] = 1 + i;
+                }
+            }
+        }
     }
+
 }
 
-void reset() {
-    *gPixN = 0;
+void RS_KERNEL process_uchar(uchar hwval, ushort weight, uint32_t x, uint32_t y) {
+    // cut and paste above, when working...
 }
 
-half RS_KERNEL setToUnity(half in) {
-    return 1;
-}

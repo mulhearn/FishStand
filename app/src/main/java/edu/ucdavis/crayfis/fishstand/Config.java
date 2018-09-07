@@ -83,6 +83,19 @@ public class Config {
         return def;
     }
 
+    public int[] getIntegerArray(String param, int[] def) {
+        String str = getString(param, "");
+        if (!str.isEmpty()){
+            String[] tokens = str.split("\\s+");  // tokenize by whitespace
+            int dat[] = new int[tokens.length];
+            for (int i=0; i<dat.length; i++){
+                dat[i] = Integer.parseInt(tokens[i]);
+            }
+            return dat;
+        }
+        return def;
+    }
+
     public boolean getBoolean(String param, boolean def) {
         String str = getString(param, "");
         if (!str.isEmpty()){
@@ -167,9 +180,15 @@ public class Config {
 
             writer.write("\n### cosmics ###\n");
             writer.write("analysis # cosmics\n");
-            writer.write("pass_rate # .1\n");
-            writer.write("max_n # 120\n");
-
+            writer.write("num_zerobias # 10\n");
+            writer.write("raw_thresh # 10\n");
+            writer.write("threshold # 10 ...\n");
+            writer.write("prescale # 100 ...\n");
+            writer.write("images_per_file # 1000\n");
+            writer.write("max_pixel # 100 (can't exceed 100)\n");
+            writer.write("region_dx # 2\n");
+            writer.write("region_dy # 2\n");
+            
             writer.flush();
             writer.close();
         } catch (Exception e){

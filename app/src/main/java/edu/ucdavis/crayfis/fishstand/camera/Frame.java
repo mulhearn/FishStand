@@ -22,7 +22,9 @@ public interface Frame {
     }
 
     Allocation getAllocation();
-    byte[] getRawBytes(int xoff, int yoff, int w, int h);
+    // get raw data in region with inclusive edges at xc +/- dx and yc +/- dy
+    // non-existant pixels are set to zero.
+    void copyRegion(int xc, int yc, int dx, int dy, short target[], int offset);
     void close();
     TotalCaptureResult getTotalCaptureResult();
 }

@@ -36,6 +36,8 @@ public class RawFrame implements Frame {
     private Semaphore alloc_lock;
     private Allocation alloc;
     private boolean alloc_ready;
+    private int width;
+    private int height;
 
 
     public RawFrame(@NonNull Image image, @NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
@@ -44,6 +46,8 @@ public class RawFrame implements Frame {
         this.alloc = alloc;
         this.alloc_lock = alloc_lock;
         alloc_ready = false;
+        width = image.getWidth();
+        height = image.getHeight();
     }
 
     public Allocation getAllocation(){
@@ -74,7 +78,41 @@ public class RawFrame implements Frame {
 
         return alloc;
     }
-    public byte[] getRawBytes(int xoff, int yoff, int w, int h){ return null; }
+
+    public void copyRegion(int xc, int yc, int dx, int dy, short target[], int offset){
+        if (! alloc_ready)
+            return;
+
+        int nominal_width = 2*dx + 1;
+        int nominal_height = 2*dy + 1;
+
+        int xmin = xc - dx;
+        int xmax = xc + dx;
+        int ymin = yc - dy;
+        int ymax = yc + dy;
+        if (xmin < 0){ xmin = 0; }
+        if (ymin < 0){ ymin = 0; }
+        if (xmax > width){ xmax = width; }
+        if (ymax > height){ ymax = height; }
+        int w = xmax - xmin;
+        int h = ymax - ymin;
+        short buf[] = new short[w*h];
+        alloc.copy2DRangeTo(xmin,ymin,w,h,buf);
+
+        for (int idy = -dy; idy <= dy; idy++){
+            for (int idx = -dx; idx <= dx; idx++) {
+                int target_index = (dy+idy)*nominal_width + (dx+idx);
+                short value = 0;
+                int x = xc + idx;
+                int y = yc + idy;
+                if ((x>=xmin)&&(y>=ymin)&&(x<xmax)&&(y<ymax)){
+                    int alloc_index = (y-ymin)*w + (x-xmin);
+                    value = buf[alloc_index];
+                }
+                target[offset+target_index] = value;
+            }
+        }
+    }
 
     public TotalCaptureResult getTotalCaptureResult(){ return result; }
 
