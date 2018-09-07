@@ -188,7 +188,7 @@ public class Config {
             writer.write("max_pixel # 100 (can't exceed 100)\n");
             writer.write("region_dx # 2\n");
             writer.write("region_dy # 2\n");
-            
+
             writer.flush();
             writer.close();
         } catch (Exception e){

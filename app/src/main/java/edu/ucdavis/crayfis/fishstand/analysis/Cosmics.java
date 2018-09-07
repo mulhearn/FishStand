@@ -49,6 +49,7 @@ public class Cosmics implements Analysis {
     private Allocation weights_alloc;
     // - output histograms
     private Allocation hist_uncal_alloc;
+    private Allocation hist_unhot_alloc;
     private Allocation hist_calib_alloc;
     // - output results
     private Allocation pixel_output_alloc;
@@ -98,6 +99,7 @@ public class Cosmics implements Analysis {
             script.invoke_add_threshold(threshold[i], prescale[i]);
         }
         hist_uncal_alloc = Allocation.createSized(rs, Element.U64(rs), max_hist +1, Allocation.USAGE_SCRIPT);
+        hist_unhot_alloc = Allocation.createSized(rs, Element.U64(rs), max_hist +1, Allocation.USAGE_SCRIPT);
         hist_calib_alloc = Allocation.createSized(rs, Element.U64(rs), max_hist +1, Allocation.USAGE_SCRIPT);
         pixel_output_alloc = Allocation.createSized(rs, Element.U16(rs), 3*max_pixel+1, Allocation.USAGE_SCRIPT);
         pixel_output = new short[3*max_pixel+1];
@@ -107,8 +109,9 @@ public class Cosmics implements Analysis {
                 .create());
         Calib calib = new Calib(width,height);
         weights_alloc.copyFromUnchecked(calib.getCombinedWeights());
-        script.bind_hist_calib(hist_calib_alloc);
         script.bind_hist_uncal(hist_uncal_alloc);
+        script.bind_hist_unhot(hist_unhot_alloc);
+        script.bind_hist_calib(hist_calib_alloc);
         script.bind_pixel_output(pixel_output_alloc);
 
         out_part = 0;
@@ -249,11 +252,14 @@ public class Cosmics implements Analysis {
 
         CloseOutput();
 
-        long[] hist_uncal_copy = new long[hist_uncal_alloc.getBytesSize() / 8];
-        long[] hist_calib_copy = new long[hist_uncal_alloc.getBytesSize() / 8];
+        int size = hist_uncal_alloc.getBytesSize() / 8;
+        long[] hist_uncal_copy = new long[size];
+        long[] hist_unhot_copy = new long[size];
+        long[] hist_calib_copy = new long[size];
 
         script_lock.lock();
         hist_uncal_alloc.copyTo(hist_uncal_copy);
+        hist_unhot_alloc.copyTo(hist_unhot_copy);
         hist_calib_alloc.copyTo(hist_calib_copy);
         script_lock.unlock();
 
@@ -277,6 +283,9 @@ public class Cosmics implements Analysis {
             writer.writeInt((int) App.getCamera().getExposure());
             writer.writeInt(hist_uncal_copy.length);
             for (long bin: hist_uncal_copy) {
+                writer.writeLong(bin);
+            }
+            for (long bin: hist_unhot_copy) {
                 writer.writeLong(bin);
             }
             for (long bin: hist_calib_copy) {

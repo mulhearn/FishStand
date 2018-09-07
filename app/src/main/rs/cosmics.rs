@@ -4,15 +4,19 @@
 
 // output histograms:
 int denom_calib;       // denominator when filling calibrated pixel histogram
-uint64_t* hist_uncal;  // histogram of uncalibrated pixel values -> 64 bit allocation
-uint64_t* hist_calib;  // histogram of calibrated pixel values -> 64 bit allocation
+// histogram of uncalibrated pixel values -> 64 bit allocation
+uint64_t* hist_uncal;
+uint64_t* hist_unhot;
+uint64_t* hist_calib;
 // output results:
 uint16_t * pixel_output;
 
 #define MAX_HIST 1024
 int max_hist;
-uint32_t local_uncal[MAX_HIST]; // 32 bit local histograms, for use with rsAtomicInc
-uint32_t local_calib[MAX_HIST];
+// 32 bit local histograms, for use with rsAtomicInc
+uint32_t local_uncal[MAX_HIST]; // uncalibrated, but no hot pixels
+uint32_t local_unhot[MAX_HIST]; // uncalibrated hot pixels
+uint32_t local_calib[MAX_HIST]; // calibrated pixels
 
 #define MAX_THRESH 10
 int num_thresh;
@@ -53,11 +57,11 @@ void set_parameters(int max_hist_, int max_pixel_, int raw_thresh_, int denom_ca
     denom_calib = denom_calib_;
 }
 
-
 void start(){
     num_pixel = 0;
     for (int i=0; i<=max_hist;i++){
         local_uncal[i] = 0;
+        local_unhot[i] = 0;
         local_calib[i] = 0;
     }
 }
@@ -65,6 +69,7 @@ void start(){
 void finish(){
     for (int i=0; i<=max_hist;i++){
         hist_uncal[i] += local_uncal[i];
+        hist_unhot[i] += local_unhot[i];
         hist_calib[i] += local_calib[i];
     }
     pixel_output[0] = num_pixel;
@@ -81,12 +86,17 @@ void finish(){
 void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
     uint32_t calib = ((uint32_t) hwval) * weight;
 
-    volatile uint32_t* addr_uncal = &local_uncal[hwval];
-    rsAtomicInc(addr_uncal);
+    if (weight > 0){
+        volatile uint32_t* addr = &local_uncal[hwval];
+        rsAtomicInc(addr);
+    } else {
+        volatile uint32_t* addr = &local_unhot[hwval];
+        rsAtomicInc(addr);
+        return;
+    }
 
-    volatile uint32_t* addr_calib = &local_calib[calib/denom_calib];
-    rsAtomicInc(addr_calib);
-
+    volatile uint32_t* addr = &local_calib[calib/denom_calib];
+    rsAtomicInc(addr);
 
     if (hwval > raw_thresh){
         int i=-1;
