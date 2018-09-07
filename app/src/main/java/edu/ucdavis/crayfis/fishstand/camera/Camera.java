@@ -27,6 +27,7 @@ import android.graphics.ImageFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.renderscript.Allocation;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
@@ -72,6 +73,7 @@ public class Camera {
 
     private boolean yuv;
     private Size raw_size;
+    private Size yuv_size;
     private int iso;
     private long exposure;
     private Size size;
@@ -135,9 +137,12 @@ public class Camera {
                     return;
                 }
 
-                Size[] sizes = configs.getOutputSizes(ImageFormat.RAW_SENSOR);
+                int maxprod;
+                Size[] sizes;
+
+                sizes = configs.getOutputSizes(ImageFormat.RAW_SENSOR);
                 summary += "RAW format available sizes:  ";
-                int maxprod = 0;
+                maxprod = 0;
                 for (Size s : sizes) {
                     int h = s.getHeight();
                     int w = s.getWidth();
@@ -150,6 +155,22 @@ public class Camera {
                 }
                 summary += "\n";
                 summary += "Largest size is " + raw_size + "\n";
+
+                sizes = configs.getOutputSizes(Allocation.class );
+                summary += "YUV format available sizes:  ";
+                maxprod = 0;
+                for (Size s : sizes) {
+                    int h = s.getHeight();
+                    int w = s.getWidth();
+                    int p = h * w;
+                    summary += w + " x " + h + ",";
+                    if (p > maxprod) {
+                        maxprod = p;
+                        yuv_size = s;
+                    }
+                }
+                summary += "\n";
+                summary += "Largest size is " + yuv_size + "\n";
 
                 summary += "focal lengths:  ";
                 for(float fl: cchars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)){
@@ -416,7 +437,11 @@ public class Camera {
             String[] res = cfg.getString("resolution", "").split("x");
             size = new Size(Integer.parseInt(res[0]), Integer.parseInt(res[1]));
         } else {
-            size = raw_size;
+            if (yuv) {
+                size = yuv_size;
+            } else {
+                size = raw_size;
+            }
         }
         App.log().append("Size = " + size + "\n");
 
