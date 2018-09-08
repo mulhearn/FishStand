@@ -13,6 +13,12 @@ public class Calib {
     private boolean calibrated;
     public boolean isCalibrated(){ return calibrated; }
 
+    private int hot_hash;
+    private int wgt_hash;
+
+    public int getHotHash(){ return hot_hash; }
+    public int getWgtHash(){ return wgt_hash; }
+
     // image width and height:
     private int width;
     private int height;
@@ -63,6 +69,7 @@ public class Calib {
         try {
             InputStream tmp = new FileInputStream(Storage.getFile("hot_pixels.cal"));
             DataInputStream input = new DataInputStream(tmp);
+            hot_hash = input.readInt();
             num_hot = input.readInt();
             hot = new int[num_hot];
             for (int i = 0; i < num_hot; i++) {
@@ -73,6 +80,7 @@ public class Calib {
             return;
         }
         App.log().append("read " + num_hot + " hot pixels.\n");
+        App.log().append("hash code:  " + hot_hash + "\n");
         if (num_hot > 1) {
             App.log().append("pixel " + hot[0] + "\n");
             App.log().append("pixel " + hot[1] + "\n");
@@ -85,6 +93,7 @@ public class Calib {
         try {
             InputStream tmp = new FileInputStream(Storage.getFile("pixel_weight.cal"));
             DataInputStream input = new DataInputStream(tmp);
+            wgt_hash = input.readInt();
             nx = input.readInt();
             ny = input.readInt();
             ds = input.readInt();
@@ -114,6 +123,7 @@ public class Calib {
         }
 
         App.log().append("read " + num_wgt + " lens shading weights.\n");
+        App.log().append("hash code:    " + wgt_hash + "\n");
         App.log().append("nx:           " + nx + "\n");
         App.log().append("ny:           " + ny + "\n");
         App.log().append("down_sample:  " + ds + "\n");

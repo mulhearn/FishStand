@@ -42,6 +42,8 @@ public class Cosmics implements Analysis {
     private int width;
     private int height;
     private int images_per_file;
+    private int hot_hash;
+    private int wgt_hash;
 
     // Renderscript and Allocations
     private ScriptC_cosmics script;
@@ -108,6 +110,8 @@ public class Cosmics implements Analysis {
                 .setY(height)
                 .create());
         Calib calib = new Calib(width,height);
+        hot_hash = calib.getHotHash();
+        wgt_hash = calib.getWgtHash();
         weights_alloc.copyFromUnchecked(calib.getCombinedWeights());
         script.bind_hist_uncal(hist_uncal_alloc);
         script.bind_hist_unhot(hist_unhot_alloc);
@@ -177,7 +181,7 @@ public class Cosmics implements Analysis {
             App.log().append("starting new output file " + filename + "\n");
             OutputStream out = Storage.newOutput(filename);
             output = new DataOutputStream(out);
-            final int HEADER_SIZE = 9;
+            final int HEADER_SIZE = 11;
             final int VERSION = 1;
             try {
                 output.writeInt(HEADER_SIZE);
@@ -187,6 +191,8 @@ public class Cosmics implements Analysis {
                 output.writeInt(App.getCamera().getResY());
                 output.writeInt(App.getCamera().getISO());
                 output.writeInt((int) App.getCamera().getExposure());
+                output.writeInt(hot_hash);
+                output.writeInt(wgt_hash);
                 output.writeInt(region_dx);
                 output.writeInt(region_dy);
                 output.writeInt(Calib.DENOM);
