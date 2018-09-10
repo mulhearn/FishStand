@@ -98,10 +98,10 @@ void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t 
     volatile uint32_t* addr = &local_calib[calib/denom_calib];
     rsAtomicInc(addr);
 
-    if (hwval > raw_thresh){
+    if (hwval >= raw_thresh){
         int i=-1;
         for (i=num_thresh-1; i>=0; i--){
-            if (calib > threshold[i]){
+            if (calib >= threshold[i]){
                 break;
             }
         }
