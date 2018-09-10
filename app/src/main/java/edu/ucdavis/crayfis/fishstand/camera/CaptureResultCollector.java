@@ -14,7 +14,7 @@ public class CaptureResultCollector {
     private final Deque<TotalCaptureResult> deque = new ArrayDeque<TotalCaptureResult>();
 
     public void add(TotalCaptureResult result) {
-        Log.i(TAG, "adding capture result to deque of size " + deque.size());
+        //Log.i(TAG, "adding capture result to deque of size " + deque.size());
         deque.offer(result);
     }
 

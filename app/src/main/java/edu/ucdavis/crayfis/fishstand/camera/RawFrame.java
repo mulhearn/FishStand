@@ -203,12 +203,12 @@ class RawFrame implements Frame {
             }
 
             if (result == null){
-                Log.e(TAG, "result deque is empty.");
+                //Log.i(TAG, "result deque is empty.");
                 return;
             }
 
             long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-            Log.i(TAG, "match found called with timestamps " + result_timestamp + " and " + image_timestamp);
+            //Log.i(TAG, "match found called with timestamps " + result_timestamp + " and " + image_timestamp);
 
             matches++;
             Frame frame = new RawFrame(image, result, alloc, alloc_lock);
@@ -222,7 +222,7 @@ class RawFrame implements Frame {
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
             long result_timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
-            Log.i(TAG, "capture complete called with timestamp " + result_timestamp);
+            //Log.i(TAG, "capture complete called with timestamp " + result_timestamp);
             result_collector.add(result);
             buildFrame();
         }
@@ -235,7 +235,7 @@ class RawFrame implements Frame {
                 return;
             }
 
-            Log.i(TAG, "image available called, image timestamp ");
+            //Log.i(TAG, "image available called, image timestamp ");
             if (this.image != null) {
                 Log.i(TAG, "dropping stored image with timestamp " + image.getTimestamp());
                 image.close();
@@ -250,7 +250,7 @@ class RawFrame implements Frame {
                     Log.i(TAG, "null image received in callback...  ignoring.");
                     return;
                 }
-                Log.i(TAG, "keeping new image with timestamp " + image.getTimestamp());
+                //Log.i(TAG, "keeping new image with timestamp " + image.getTimestamp());
                 image_count.incrementAndGet();
             } else {
                 Image image = imageReader.acquireNextImage();
