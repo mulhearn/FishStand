@@ -357,8 +357,8 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         if (num_frames > num) {
             frame.close();
             if (num_frames == num+1) {
-                App.updateState(App.STATE.STOPPING);
                 run_finished = true;
+                App.updateState(App.STATE.STOPPING);
             }
             return;
         } else if(num_frames <= num) {

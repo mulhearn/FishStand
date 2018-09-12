@@ -86,10 +86,9 @@ public class Macro {
             return cfg;
         }
 
-        boolean cycle = false;
-
-        while (!cycle) {
+        while (true) {
             current_line++;
+            //Log.i(TAG, "current line:  " + current_line);
             if(current_line >= lines.size()) return null;
 
             String line = lines.get(current_line);
@@ -110,20 +109,15 @@ public class Macro {
                     case "run":
                         String[] args = Arrays.copyOfRange(tokens,2, tokens.length);
                         Config cfg = new Config(tokens[1], args);
-                        cycle = false;
                         return cfg;
-
                     case "goto":
                         // -2 for zero-indexing and increment at start of loop
                         current_line = Integer.parseInt(tokens[1]) - 2;
-                        cycle = true;
                         break;
-
                     case "repeat":
                         repeats.addFirst(Integer.parseInt(tokens[1]) - 1);
                         loop_lines.addFirst(current_line);
                         break;
-
                     case "endrepeat":
                         int count = repeats.pollFirst();
                         if(count > 0) {
@@ -134,7 +128,6 @@ public class Macro {
                             loop_lines.pollFirst();
                         }
                         break;
-                        
                     case "for":
                         String var = tokens[1];
                         if(!tokens[2].equalsIgnoreCase("in"))
@@ -191,10 +184,6 @@ public class Macro {
 
             }
         }
-
-        // finally, if we've done a full loop through, return null
-        return null;
-
     }
 
     public boolean hasNext() {
