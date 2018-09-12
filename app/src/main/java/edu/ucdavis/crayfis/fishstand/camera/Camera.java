@@ -389,6 +389,9 @@ public class Camera {
                 camera_handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
+                        if (csession == null){ // run was stopped after posting.
+                            return;
+                        }
                         try {
                             if(yuv && N_ALLOC > 1) {
                                 csession.setRepeatingBurst(requests, frame_producer.getCaptureCallback(), frame_handler);
@@ -396,6 +399,8 @@ public class Camera {
                                 csession.setRepeatingRequest(requests.get(0), frame_producer.getCaptureCallback(), frame_handler);
                             }
                         } catch (CameraAccessException e) {
+                            e.printStackTrace();
+                        } catch (NullPointerException e) {
                             e.printStackTrace();
                         }
                     }
@@ -488,7 +493,10 @@ public class Camera {
 
     public void stop() {
         configured = false;
-        csession.close();
+        if (csession != null) {
+            csession.close();
+            csession = null;
+        }
         if (frame_producer != null){
             frame_producer.stop();
         }
