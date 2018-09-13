@@ -113,7 +113,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     private int num;
     private boolean run_finished; // to make sure we can still exit with stop button
     private int delay;
-    private Boolean delay_applied;  // has the initial delay already been applied?
 
     private long last_exposure;
     private long last_duration;
@@ -136,8 +135,8 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand");
+        //App.log().append("DaqService received onStartCommand\n");
 
-        delay_applied = false;
         showNotification();
 
         return START_STICKY;
@@ -146,6 +145,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     @Override
     public void onDestroy(){
         Log.i(TAG, "onDestroy");
+        //App.log().append("DaqService received onDestroy\n");
 
         stopForeground(true);
         broadcast_manager.unregisterReceiver(state_change_receiver);
@@ -189,7 +189,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         Notification notification = new NotificationCompat.Builder(this, NOTIFICATIONS.CHANNEL_ID)
                 .setContentTitle("FishStand Cosmics")
                 .setTicker("FishStand Cosmics")
-                .setContentText("Cosmics running is underway")
+                .setContentText("FishStand data acquisition is underway")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
                 //.setContentIntent(pendingIntent)
@@ -216,7 +216,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         App.getCamera().configure(cfg);
 
-        run_finished = false;
         events = new AtomicInteger();
         processing = new AtomicInteger();
 
@@ -248,12 +247,11 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         App.log().append("starting run " + run_num + "\n");
         App.log().append("Finished initialization.\n");
 
-        if ((!delay_applied) && (delay > 0)) {
+        if ((!run_finished) && (delay > 0)) {
             App.log().append("Delaying start of first run by " + delay + " seconds.\n");
             SystemClock.sleep(delay * 1000);
-            delay_applied = true;
         }
-
+        run_finished = false;
         App.getCamera().start(this);
     }
 
