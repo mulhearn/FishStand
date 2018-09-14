@@ -70,6 +70,9 @@ public class Camera {
     private int min_sens=0;
     private int max_sens=0;
     private int max_analog=0;
+    private long min_duration_raw;
+    private long min_duration_yuv;
+    private long min_duration;
 
     private boolean yuv;
     private Size raw_size;
@@ -156,6 +159,9 @@ public class Camera {
                 summary += "\n";
                 summary += "Largest size is " + raw_size + "\n";
 
+                min_duration_raw = configs.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, raw_size);
+                summary += "with minimum frame duration " + min_duration_raw + "\n";
+
                 sizes = configs.getOutputSizes(Allocation.class );
                 summary += "YUV format available sizes:  ";
                 maxprod = 0;
@@ -171,6 +177,9 @@ public class Camera {
                 }
                 summary += "\n";
                 summary += "Largest size is " + yuv_size + "\n";
+                min_duration_yuv = configs.getOutputMinFrameDuration(ImageFormat.YUV_420_888, yuv_size);
+                summary += "with minimum frame duration " + min_duration_yuv + "\n";
+
 
                 summary += "focal lengths:  ";
                 for(float fl: cchars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)){
@@ -299,10 +308,17 @@ public class Camera {
             try {
                 App.log().append("setting exposure to " + exposure + "\n");
 
+                if (exposure < min_duration){
+                    App.log().append("setting frame duration to " + min_duration + "\n");
+                }
+
                 CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                 b.addTarget(s);
                 b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
                 b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
+                if (exposure < min_duration) {
+                    b.set(CaptureRequest.SENSOR_FRAME_DURATION, min_duration);
+                }
                 b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
                 b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
                 b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
@@ -428,12 +444,24 @@ public class Camera {
 
     public void configure(Config cfg) {
         yuv = cfg.getBoolean("yuv", false);
+        if (yuv){
+            min_duration = min_duration_yuv;
+        } else {
+            min_duration = min_duration_raw;
+        }
         int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
         long exposure_ref = cfg.getLong("exposure_reference", max_exp);
         double iso_scale = cfg.getDouble("sensitivity_scale", 1.0);
         double exposure_scale = cfg.getDouble("exposure_scale", 1.0);
+        double min_duration_scale = cfg.getDouble("min_duration_scale", 0.0);
+
         iso = (int) (iso_scale * iso_ref);
         exposure = (long) (exposure_scale * exposure_ref);
+
+        if (min_duration < min_duration_scale * exposure_ref){
+            min_duration = (long) (min_duration_scale * exposure_ref);
+        }
+        
         Log.i(TAG, "setting exposure to " + exposure);
         Log.i(TAG, "setting sensitivity to " + iso);
 
