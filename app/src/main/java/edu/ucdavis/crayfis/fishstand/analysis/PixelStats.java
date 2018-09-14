@@ -21,12 +21,19 @@ public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
 
     private AtomicInteger images = new AtomicInteger();
-    private int num_pixels;
+    final private int num_pixel;
 
-    private Allocation sum;
-    private Allocation ssq;
-    private Allocation max;
-    private Allocation second;
+    final private int num_partition;
+    final private int partition_index;
+    private int partition_start;
+    private int partition_end;
+    private int partition_size;
+
+    private Allocation sum_alloc;
+    private Allocation ssq_alloc;
+    private Allocation mxv_alloc;
+    private Allocation sec_alloc;
+
     private ScriptC_pixelstats script;
 
     private final boolean YUV;
@@ -41,40 +48,46 @@ public class PixelStats implements Analysis {
         FILE_SIZE = cfg.getLong("filesize", 5000000);
         DOWNSAMPLE_STEP = cfg.getInteger("samplefile", 171);
 
-	    int nx = App.getCamera().getResX();
+        int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
-        num_pixels = nx * ny;
+        num_pixel = nx * ny;
 
-        App.log().append("num_pixels:   " + num_pixels + "\n")
+        num_partition   = cfg.getInteger("num_partition", 1);
+        partition_index = cfg.getInteger("partition_index", 0);
+
+        int pixels_per_partition = num_pixel / num_partition;
+        if (num_pixel % num_partition != 0){
+            pixels_per_partition += 1;
+        }
+        partition_start = pixels_per_partition * partition_index;
+        partition_end   = pixels_per_partition * (partition_index+1);
+        if (partition_end > num_pixel){
+            partition_end = num_pixel;
+        }
+        partition_size = partition_end - partition_start;
+
+        if (num_partition > 1){
+            App.log().append("processing partition " + partition_index + " of " + num_partition + ".\n");
+
+        }
+
+        App.log().append("will process " + partition_size + " pixels of " + num_pixel + " total\n")
                 .append("allocating memory, please be patient...\n");
 
         RenderScript rs = App.getRenderScript();
 
-        Type type16 = new Type.Builder(rs, Element.U16(rs))
-                .setX(nx)
-                .setY(ny)
-                .create();
-
-        Type type32 = new Type.Builder(rs, Element.U32(rs))
-                .setX(nx)
-                .setY(ny)
-                .create();
-
-        Type type64 = new Type.Builder(rs, Element.U64(rs))
-                .setX(nx)
-                .setY(ny)
-                .create();
-
-        sum = Allocation.createTyped(rs, type32);
-        ssq = Allocation.createTyped(rs, type64);
-        max = Allocation.createTyped(rs, type16);
-        second = Allocation.createTyped(rs, type16);
+        sum_alloc = Allocation.createSized(rs, Element.U32(rs), partition_size, Allocation.USAGE_SCRIPT);
+        ssq_alloc = Allocation.createSized(rs, Element.U64(rs), partition_size, Allocation.USAGE_SCRIPT);
+        mxv_alloc = Allocation.createSized(rs, Element.U16(rs), partition_size, Allocation.USAGE_SCRIPT);
+        sec_alloc = Allocation.createSized(rs, Element.U16(rs), partition_size, Allocation.USAGE_SCRIPT);
 
         script = new ScriptC_pixelstats(App.getRenderScript());
-        script.set_g_sum(sum);
-        script.set_g_ssq(ssq);
-        script.set_g_max(max);
-        script.set_g_second(second);
+        script.bind_sum(sum_alloc);
+        script.bind_ssq(ssq_alloc);
+        script.bind_mxv(mxv_alloc);
+        script.bind_sec(sec_alloc);
+        script.invoke_set_image_width(nx);
+        script.invoke_set_partition(partition_start, partition_end);
 
         App.log().append("finished allocating memory.\n");
     }
@@ -87,46 +100,45 @@ public class PixelStats implements Analysis {
         script_lock.lock();
         if (YUV) script.forEach_add_YUV(buf);
         else script.forEach_add_RAW(buf);
-
         script_lock.unlock();
         frame.close();
     }
 
     public void ProcessRun() {
 
-        final int[] sum_buf;
-        final long[] ssq_buf;
-        final short[] max_buf;
-        final short[] second_buf;
+        final int[] sum;
+        final long[] ssq;
+        final short[] mxv;
+        final short[] sec;
 
         synchronized (this) {
-            sum_buf = new int[num_pixels];
-            sum.copyTo(sum_buf);
-            sum.destroy();
+            sum = new int[partition_size];
+            sum_alloc.copyTo(sum);
+            sum_alloc.destroy();
 
-            ssq_buf = new long[num_pixels];
-            ssq.copyTo(ssq_buf);
-            ssq.destroy();
+            ssq = new long[partition_size];
+            ssq_alloc.copyTo(ssq);
+            ssq_alloc.destroy();
 
-            max_buf = new short[num_pixels];
-            max.copyTo(max_buf);
-            max.destroy();
+            mxv = new short[partition_size];
+            mxv_alloc.copyTo(mxv);
+            mxv_alloc.destroy();
 
-            second_buf = new short[num_pixels];
-            second.copyTo(second_buf);
-            second.destroy();
+            sec = new short[partition_size];
+            sec_alloc.copyTo(sec);
+            sec_alloc.destroy();
         }
 
         if (FILE_SIZE > 0) {
-            WriteOutput(sum_buf, ssq_buf, max_buf, second_buf, images.intValue());
+            WriteOutput(sum, ssq, mxv, sec, images.intValue());
         }
         long outer_sum = 0;
-        for (int ipix=0; ipix<num_pixels;ipix++){
-            outer_sum += sum_buf[ipix];
+        for (int ipix=0; ipix<partition_size;ipix++){
+            outer_sum += sum[ipix];
         }
         double avg;
         try {
-            avg = outer_sum / (double) num_pixels / images.intValue();
+            avg = outer_sum / (double) partition_size / images.intValue();
         } catch (ArithmeticException e) {
             avg = -1;
         }
@@ -148,7 +160,7 @@ public class PixelStats implements Analysis {
                 num_files++;
             }
 
-            final int HEADER_SIZE = 10;
+            final int HEADER_SIZE = 12;
             final int VERSION = 1;
 
             for (int ifile = 0; ifile < num_files; ifile++) {
@@ -172,8 +184,10 @@ public class PixelStats implements Analysis {
                 writer.writeInt(App.getCamera().getResY());
                 writer.writeInt(App.getCamera().getISO());
                 writer.writeInt((int) App.getCamera().getExposure());
-                writer.writeInt(pixel_start);
-                writer.writeInt(pixel_end);
+                writer.writeInt(num_partition);
+                writer.writeInt(partition_index);
+                writer.writeInt(partition_start + pixel_start);
+                writer.writeInt(partition_start + pixel_end);
                 writer.writeInt(1); // downsample step
 
                 // payload
@@ -185,12 +199,15 @@ public class PixelStats implements Analysis {
                     writer.writeLong(ssq_buf[i]);
                 }
 
-                for (int i=pixel_start; i < pixel_end; i++) {
-                    writer.writeShort(max_buf[i]);
+                if (max_buf != null) {
+                    for (int i = pixel_start; i < pixel_end; i++) {
+                        writer.writeShort(max_buf[i]);
+                    }
                 }
-
-                for (int i=pixel_start; i < pixel_end; i++) {
-                    writer.writeShort(second_buf[i]);
+                if (second_buf != null) {
+                    for (int i = pixel_start; i < pixel_end; i++) {
+                        writer.writeShort(second_buf[i]);
+                    }
                 }
                 writer.flush();
                 writer.close();
@@ -213,22 +230,22 @@ public class PixelStats implements Analysis {
                 writer.writeInt(App.getCamera().getResY());
                 writer.writeInt(App.getCamera().getISO());
                 writer.writeInt((int) App.getCamera().getExposure());
-                writer.writeInt(0); // pixel_start
-                writer.writeInt((num_pixels-1)/DOWNSAMPLE_STEP + 1); // pixel_end
+                writer.writeInt(num_partition);
+                writer.writeInt(partition_index);
+                writer.writeInt(partition_start); // pixel_start
+                writer.writeInt(partition_end); // pixel_end
                 writer.writeInt(DOWNSAMPLE_STEP);
-
-                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                for (int i=0; i < partition_size; i+=DOWNSAMPLE_STEP) {
                     writer.writeInt(sum_buf[i]);
                 }
 
                 for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
                     writer.writeLong(ssq_buf[i]);
                 }
-
-                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                for (int i = 0; i < num_pixels; i += DOWNSAMPLE_STEP) {
                     writer.writeShort(max_buf[i]);
                 }
-                for (int i=0; i < num_pixels; i+=DOWNSAMPLE_STEP) {
+                for (int i = 0; i < num_pixels; i += DOWNSAMPLE_STEP) {
                     writer.writeShort(second_buf[i]);
                 }
                 writer.flush();
