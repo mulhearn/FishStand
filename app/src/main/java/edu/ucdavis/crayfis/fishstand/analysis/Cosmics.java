@@ -1,6 +1,7 @@
 package edu.ucdavis.crayfis.fishstand.analysis;
 
 import android.hardware.camera2.CaptureResult;
+import android.os.SystemClock;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
@@ -42,6 +43,7 @@ public class Cosmics implements Analysis {
     private int width;
     private int height;
     private int images_per_file;
+    private int hist_prescale;
     private int hot_hash;
     private int wgt_hash;
 
@@ -78,6 +80,7 @@ public class Cosmics implements Analysis {
         final int max_hist = yuv_mode ? 255 : 1023;
 
         images_per_file = cfg.getInteger("images_per_file", 1000);
+        hist_prescale = cfg.getInteger("hist_prescale", 10);
 
         raw_thresh   = cfg.getInteger("raw_thresh", 10);
         max_pixel =  cfg.getInteger("max_pixel", 100);
@@ -124,12 +127,17 @@ public class Cosmics implements Analysis {
     }
 
     public void ProcessFrame(Frame frame) {
-        images.incrementAndGet();
+        int image_num = images.incrementAndGet();
 
         Allocation buf = frame.getAllocation();
 
         script_lock.lock();
         script.invoke_start();
+        if ((hist_prescale > 0)&&(image_num%hist_prescale == 0)){
+            if(yuv_mode)  script.forEach_histogram_uchar(buf, weights_alloc);
+            else     script.forEach_histogram_ushort(buf, weights_alloc);
+        }
+
         if(yuv_mode)  script.forEach_process_uchar(buf, weights_alloc);
         else     script.forEach_process_ushort(buf, weights_alloc);
         script.invoke_finish();
@@ -216,6 +224,9 @@ public class Cosmics implements Analysis {
                 timestamp = 1;
             }
             output.writeLong(timestamp);
+            // timestamp is elapsed nanoseconds since boot, convert to ms since epoch:
+            long millistamp = System.currentTimeMillis() + (timestamp - SystemClock.elapsedRealtimeNanos())/1000000L;
+            output.writeLong(millistamp);
             output.writeInt(num_region);
             output.writeInt(dropped);
             for (short x: region_buf)
@@ -272,7 +283,7 @@ public class Cosmics implements Analysis {
         try {
             int run_num = App.getPref().getInt("run_num", 0);
 
-            final int HEADER_SIZE = 6;
+            final int HEADER_SIZE = 7;
             final int VERSION = 1;
 
             String filename = "run_" + run_num + "_cosmics_hist.dat";
@@ -287,6 +298,7 @@ public class Cosmics implements Analysis {
             writer.writeInt(App.getCamera().getResY());
             writer.writeInt(App.getCamera().getISO());
             writer.writeInt((int) App.getCamera().getExposure());
+            writer.writeInt(hist_prescale);
             writer.writeInt(hist_uncal_copy.length);
             for (long bin: hist_uncal_copy) {
                 writer.writeLong(bin);

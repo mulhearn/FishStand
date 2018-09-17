@@ -76,16 +76,14 @@ void finish(){
     if (num_pixel > max_pixel){
         num_pixel = max_pixel;
     }
-    for (int i=0; i<max_pixel; i++){
+    for (int i=0; i<num_pixel; i++){
         pixel_output[3*i + 1] = pixel_x[i];
         pixel_output[3*i + 2] = pixel_y[i];
         pixel_output[3*i + 3] = highest[i];
     }
 }
 
-void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
-    uint32_t calib = ((uint32_t) hwval) * weight;
-
+void RS_KERNEL histogram_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
     if (weight > 0){
         volatile uint32_t* addr = &local_uncal[hwval];
         rsAtomicInc(addr);
@@ -95,10 +93,20 @@ void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t 
         return;
     }
 
+    uint32_t calib = ((uint32_t) hwval) * weight;
     volatile uint32_t* addr = &local_calib[calib/denom_calib];
     rsAtomicInc(addr);
+}
+
+void RS_KERNEL histogram_uchar(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
+    // cut and paste above, when ready...
+}
+
+
+void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t y) {
 
     if (hwval >= raw_thresh){
+        uint32_t calib = ((uint32_t) hwval) * weight;
         int i=-1;
         for (i=num_thresh-1; i>=0; i--){
             if (calib >= threshold[i]){
@@ -123,6 +131,5 @@ void RS_KERNEL process_ushort(ushort hwval, ushort weight, uint32_t x, uint32_t 
 }
 
 void RS_KERNEL process_uchar(uchar hwval, ushort weight, uint32_t x, uint32_t y) {
-    // cut and paste above, when working...
+    // cut and paste above, when ready...
 }
-
