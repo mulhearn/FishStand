@@ -45,7 +45,7 @@ public class Camera {
 
     private static final String TAG = "Camera";
 
-    private static int N_ALLOC = 2;
+    private static int N_ALLOC;
 
     //camera2 api objects
     private String cid;
@@ -409,14 +409,11 @@ public class Camera {
                             return;
                         }
                         try {
-                            if(yuv && N_ALLOC > 1) {
-                                csession.setRepeatingBurst(requests, frame_producer.getCaptureCallback(), frame_handler);
-                            } else {
-                                csession.setRepeatingRequest(requests.get(0), frame_producer.getCaptureCallback(), frame_handler);
-                            }
-                        } catch (CameraAccessException e) {
-                            e.printStackTrace();
-                        } catch (NullPointerException e) {
+                            if(N_ALLOC > 1)
+                                csession.setRepeatingBurst(requests, frame_producer, frame_handler);
+                            else
+                                csession.setRepeatingRequest(requests.get(0), frame_producer, frame_handler);
+                        } catch (CameraAccessException | NullPointerException e) {
                             e.printStackTrace();
                         }
                     }
@@ -446,8 +443,10 @@ public class Camera {
         yuv = cfg.getBoolean("yuv", false);
         if (yuv){
             min_duration = min_duration_yuv;
+            N_ALLOC = 2;
         } else {
             min_duration = min_duration_raw;
+            N_ALLOC = 1;
         }
         int iso_ref = cfg.getInteger("sensitivity_reference", max_analog);
         long exposure_ref = cfg.getLong("exposure_reference", max_exp);
@@ -470,11 +469,7 @@ public class Camera {
             String[] res = cfg.getString("resolution", "").split("x");
             size = new Size(Integer.parseInt(res[0]), Integer.parseInt(res[1]));
         } else {
-            if (yuv) {
-                size = yuv_size;
-            } else {
-                size = raw_size;
-            }
+            size = yuv ? yuv_size : raw_size;
         }
         App.log().append("Size = " + size + "\n");
 
@@ -557,6 +552,10 @@ public class Camera {
         return exposure;
     }
 
+    public CameraCharacteristics getCharacteristics() {
+        return cchars;
+    }
+
     private final CameraCaptureSession.CaptureCallback initialCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
@@ -587,8 +586,8 @@ public class Camera {
             Pair<Double, Double>[] noise_coeffs = result.get(CaptureResult.SENSOR_NOISE_PROFILE);
             if(noise_coeffs != null) {
                 sb.append("noise_coeffs:\n");
-                for (int i=0; i<noise_coeffs.length; i++){
-                    sb.append("first:  " + noise_coeffs[i].first + " second:  " + noise_coeffs[i].second + "\n");
+                for (Pair<Double, Double> coeffs : noise_coeffs){
+                    sb.append("first:  " + coeffs.first + " second:  " + coeffs.second + "\n");
                 }
             }
 

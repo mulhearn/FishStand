@@ -1,76 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="edu.ucdavis.crayfis.fishstand.MainActivity" >
-    >
+    tools:context="edu.ucdavis.crayfis.fishstand.MainActivity"
+    android:layout_centerHorizontal="true"
+    android:layout_marginStart="0dp"
+    android:layout_marginTop="5dp"
+    android:orientation="vertical"
+    android:weightSum="1">
+
+    <EditText
+        android:id="@+id/config_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:inputType="text"
+        android:text="default.cfg" />
+
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:weightSum="1"
-        android:layout_alignParentTop="true"
-        android:layout_alignParentStart="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="5dp">
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:orientation="horizontal"
+        android:weightSum="1">
 
-        <EditText
-            android:id="@+id/config_name"
-            android:layout_width="match_parent"
+        <Button
+            android:id="@+id/start_stop_btn"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:ems="10"
-            android:inputType="text"
-            android:text="default.cfg" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="1"
-            android:layout_alignParentTop="true"
-            android:layout_alignParentStart="true"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="5dp">
-
-            <Button
-                android:id="@+id/start_stop_btn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="empty text"
-                android:onClick="onStartStopClicked" />
-
-            <Button
-                android:id="@+id/edit_btn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:onClick="onEditClicked"
-                android:text="Edit" />
-
-        </LinearLayout>
-
-
-        <TextView
-            android:id="@+id/status1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:onClick="onStartStopClicked"
             android:text="empty text" />
 
-        <TextView
-            android:id="@+id/status2"
-            android:layout_width="match_parent"
+        <Button
+            android:id="@+id/edit_btn"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="empty text" />
+            android:onClick="onEditClicked"
+            android:text="Edit" />
 
-        <ScrollView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <TextView
-                android:id="@+id/log_text"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
-        </ScrollView>
     </LinearLayout>
-</RelativeLayout>
+
+    <Switch
+        android:id="@+id/upload_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:showText="false"
+        android:text="Upload" />
+
+    <TextView
+        android:id="@+id/status1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty text" />
+
+    <TextView
+        android:id="@+id/status2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty text" />
+
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/log_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </ScrollView>
+
+</LinearLayout>

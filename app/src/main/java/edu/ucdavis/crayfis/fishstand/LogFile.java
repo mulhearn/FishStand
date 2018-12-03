@@ -16,13 +16,13 @@ public class LogFile {
 
     private String logtxt = "";
 
-    public void newRun(int run_num) {
+    public void newRun(int run_num, boolean upload) {
         logtxt = "";
         update.run();
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
         String filename = "run_" + run_num + ".log";
-        OutputStream out = Storage.newOutput(filename);
+        OutputStream out = Storage.newOutput(filename, upload);
         if (out == null){
             return;
         }

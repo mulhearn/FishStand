@@ -8,12 +8,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.PointF;
-import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.params.TonemapCurve;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Build;
@@ -24,7 +19,6 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import android.util.Pair;
 import android.widget.Toast;
 import android.os.IBinder;
 
@@ -37,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ucdavis.crayfis.fishstand.analysis.Analysis;
 import edu.ucdavis.crayfis.fishstand.analysis.Cosmics;
+import edu.ucdavis.crayfis.fishstand.analysis.TriggeredImage;
 import edu.ucdavis.crayfis.fishstand.analysis.Photo;
 import edu.ucdavis.crayfis.fishstand.analysis.PixelStats;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
@@ -48,6 +43,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     private static final long BATTERY_CHECK_TIME = 600000L;
 
     private Macro macro;
+    private boolean upload;
 
     private Analysis analysis;
 
@@ -60,6 +56,11 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         public void onReceive(Context context, Intent intent) {
             final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
             final String config_name = intent.getStringExtra(App.EXTRA_CONFIG_FILE);
+            upload = intent.getBooleanExtra(App.EXTRA_UPLOAD_FILES, false);
+
+            if(upload)
+                startService(new Intent(DaqService.this, UploadService.class));
+
             broadcast_handler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -71,6 +72,12 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                                     macro = Macro.create("default.mac");
                                 else if(config_name.endsWith(".mac"))
                                     macro = Macro.create(config_name);
+
+                                // parse to the first config (if it exists)
+                                // this loads any environment vars at the start of the file
+                                if(macro != null && !macro.hasNext())
+                                    macro = null;
+
                             }
 
                             final Config cfg;
@@ -122,7 +129,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
     @Override
     public void onCreate() {
-        Log.i(TAG, "onCreate");
 
         broadcast_thread = new HandlerThread("Broadcasts");
         broadcast_thread.start();
@@ -137,7 +143,27 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         Log.i(TAG, "onStartCommand");
         //App.log().append("DaqService received onStartCommand\n");
 
-        showNotification();
+        // show notifications
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel notificationChannel
+                    = new NotificationChannel(NOTIFICATIONS.CHANNEL_ID, NOTIFICATIONS.CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_LOW);
+
+            NotificationManager manager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+            manager.createNotificationChannel(notificationChannel);
+        }
+
+        Notification notification = new NotificationCompat.Builder(this, NOTIFICATIONS.CHANNEL_ID)
+                .setContentTitle("FishStand Cosmics")
+                .setTicker("FishStand Cosmics")
+                .setContentText("FishStand data acquisition is underway")
+                .setSmallIcon(R.drawable.ic_daq_icon)
+                //.setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .build();
+
+        startForeground(NOTIFICATIONS.FOREGROUND_ID, notification);
 
         return START_STICKY;
     }
@@ -160,45 +186,8 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     // Required notification for running service in Foreground:
     public interface NOTIFICATIONS {
         int FOREGROUND_ID = 101;
-        String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand";
+        String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand.DaqService";
         String CHANNEL_NAME = "FishStand DAQ";
-    }
-
-    private void showNotification() {
-
-        /*
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                notificationIntent, 0);
-        */
-
-        Bitmap icon = BitmapFactory.decodeResource(getResources(),
-                R.mipmap.ic_launcher);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel notificationChannel
-                    = new NotificationChannel(NOTIFICATIONS.CHANNEL_ID, NOTIFICATIONS.CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_LOW);
-
-            NotificationManager manager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-            manager.createNotificationChannel(notificationChannel);
-        }
-
-        Notification notification = new NotificationCompat.Builder(this, NOTIFICATIONS.CHANNEL_ID)
-                .setContentTitle("FishStand Cosmics")
-                .setTicker("FishStand Cosmics")
-                .setContentText("FishStand data acquisition is underway")
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
-                //.setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .build();
-
-        startForeground(NOTIFICATIONS.FOREGROUND_ID,
-                notification);
-
     }
 
     @Override
@@ -210,7 +199,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     public void Run(Config cfg) {
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().newRun(run_num);
+        App.log().newRun(run_num, upload);
         App.log().append("init called.\n");
         cfg.logConfig();
 
@@ -231,13 +220,16 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         switch (analysis_name.toLowerCase()) {
             case "pixelstats":
-                analysis = new PixelStats(cfg);
+                analysis = new PixelStats(cfg, upload);
                 break;
             case "photo":
-                analysis = new Photo(cfg);
+                analysis = new Photo(cfg, upload);
                 break;
             case "cosmics":
-                analysis = new Cosmics(cfg);
+                analysis = new Cosmics(cfg, upload);
+                break;
+            case "triggered_image":
+                analysis = new TriggeredImage(cfg, upload);
                 break;
 
             default:
@@ -347,19 +339,18 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                     + " duration " + dur
                     + " sensitivity " + iso + "\n");
             long request = App.getCamera().getExposure();
-            if (exp != request){
+            if (Math.abs(exp - request) / request > .1){
                 App.log().append("reported exposure " + exp + " does not match request " + request + "\n");
             }
         }
 
-        if (num_frames > num) {
+        if (num_frames > num && num > 0) {
             frame.close();
             if (num_frames == num+1) {
                 run_finished = true;
                 App.updateState(App.STATE.STOPPING);
             }
-            return;
-        } else if(num_frames <= num) {
+        } else {
             try {
                 AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
                     @Override

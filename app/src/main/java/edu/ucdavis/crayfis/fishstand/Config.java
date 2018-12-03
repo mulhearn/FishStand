@@ -189,6 +189,11 @@ public class Config {
             writer.write("region_dx # 2\n");
             writer.write("region_dy # 2\n");
 
+            writer.write("\n### triggered_image ###\n");
+            writer.write("analysis # triggered_image\n");
+            writer.write("sample_frac # 1.0 = mean (default), 0.0 = max\n");
+            writer.write("thresh # 0.0\n");
+
             writer.flush();
             writer.close();
         } catch (Exception e){

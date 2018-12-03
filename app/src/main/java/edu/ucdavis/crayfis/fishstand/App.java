@@ -80,25 +80,26 @@ public class App extends Application {
     public static final String ACTION_STATE_CHANGE = "state_change";
     public static final String EXTRA_NEW_STATE = "new_state";
     public static final String EXTRA_CONFIG_FILE = "config_file";
+    public static final String EXTRA_UPLOAD_FILES = "upload";
 
     private STATE state = STATE.READY;
     public static STATE getAppState() {
         return instance.state;
     }
-    public static synchronized void updateState(STATE new_state, String filename) {
+    public static synchronized void updateState(STATE new_state, String filename, Boolean upload) {
         if (instance.state == new_state){
             return;
         }
         instance.state = new_state;
-        Intent intent = new Intent(ACTION_STATE_CHANGE);
-        intent.putExtra(EXTRA_NEW_STATE, new_state);
-        if(filename != null)
-            intent.putExtra(EXTRA_CONFIG_FILE, filename);
+        Intent intent = new Intent(ACTION_STATE_CHANGE)
+                .putExtra(EXTRA_NEW_STATE, new_state)
+                .putExtra(EXTRA_CONFIG_FILE, filename)
+                .putExtra(EXTRA_UPLOAD_FILES, upload);
         LocalBroadcastManager.getInstance(instance).sendBroadcast(intent);
         getMessage().updateState();
     }
     public static void updateState(STATE new_state) {
-        updateState(new_state, null);
+        updateState(new_state, null, null);
     }
 
 }
