@@ -1,0 +1,9 @@
+{
+    "bucketName": "fishstand-data",
+    "authPolicyName": "s3_amplify_e005db7b",
+    "unauthPolicyName": "s3_amplify_e005db7b",
+    "authRoleName": "ishtand-20181128154939-authRole",
+    "unauthRoleName": "ishtand-20181128154939-unauthRole",
+    "authPermissions": "rw",
+    "unauthPermissions": "w"
+}
