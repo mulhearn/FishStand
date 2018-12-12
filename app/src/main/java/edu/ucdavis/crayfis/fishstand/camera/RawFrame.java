@@ -33,10 +33,13 @@ class RawFrame extends Frame {
     private static final String TAG = "RawFrame";
     private Image image;
 
+    private static final AtomicInteger nFrames = new AtomicInteger();
+
     private RawFrame(@NonNull Image image, @NonNull TotalCaptureResult result, Allocation alloc, Semaphore alloc_lock){
         super(result, alloc, alloc_lock);
         this.image = image;
         alloc_ready = false;
+        nFrames.incrementAndGet();
     }
 
     @Override
@@ -86,9 +89,18 @@ class RawFrame extends Frame {
     }
 
     @Override
-    public void save(OutputStream out) throws IOException {
-        DngCreator dng = new DngCreator(App.getCamera().getCharacteristics(), result);
-        dng.writeImage(out, image);
+    public void saveAndClose(OutputStream out) throws IOException {
+        // free up locks first
+        super.close();
+
+        if(image != null) {
+            DngCreator dng = new DngCreator(App.getCamera().getCharacteristics(), result);
+            dng.writeImage(out, image);
+
+            image.close();
+            image = null;
+            nFrames.decrementAndGet();
+        }
     }
 
     @Override
@@ -102,6 +114,7 @@ class RawFrame extends Frame {
         if (image != null) {
             image.close();
             image = null;
+            nFrames.decrementAndGet();
         }
     }
 
@@ -163,7 +176,14 @@ class RawFrame extends Frame {
                 return;
             }
 
-            imageQueue.add(imageReader.acquireNextImage());
+            if(imageQueue.size() + nFrames.get() == MAX_IMAGES) {
+                if(imageQueue.size() == 0) return;
+                imageQueue.poll()
+                        .close();
+                dropped_images++;
+            }
+
+            imageQueue.offer(imageReader.acquireNextImage());
             buildFrame();
         }
 

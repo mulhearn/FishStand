@@ -34,14 +34,18 @@ class YuvFrame extends Frame {
     public void readyAlloc() {}
 
     @Override
-    public void save(OutputStream out) throws IOException {
+    public void saveAndClose(OutputStream out) {
+        // release allocation first
+        byte[][] rowBufs = new byte[height][width];
+        for(int irow=0; irow<height; irow++)
+            copyRange(0, irow, width, 1, rowBufs[irow]);
+        close();
+
         ImageInfo info = new ImageInfo(width, height, 8, false, true, false);
         PngWriter writer = new PngWriter(out, info);
-        byte[] rowBuf = new byte[width];
 
         for(int irow=0; irow < height; irow++) {
-            copyRange(0, irow, width, 1, rowBuf);
-            ImageLineByte line = new ImageLineByte(info, rowBuf);
+            ImageLineByte line = new ImageLineByte(info, rowBufs[irow]);
             writer.writeRow(line);
         }
     }

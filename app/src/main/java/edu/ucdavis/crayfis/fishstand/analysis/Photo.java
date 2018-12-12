@@ -1,5 +1,7 @@
 package edu.ucdavis.crayfis.fishstand.analysis;
 
+import android.support.annotation.Nullable;
+
 import java.io.OutputStream;
 
 import ar.com.hjg.pngj.ImageInfo;
@@ -7,13 +9,15 @@ import ar.com.hjg.pngj.ImageLineByte;
 import ar.com.hjg.pngj.PngWriter;
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Photo implements Analysis {
     private static final String TAG = "Photo";
 
-    private final boolean UPLOAD;
+    private final int gzip;
+    private UploadService.UploadBinder binder;
 
     private final int PHOTO_DIM;
     private final int X_OFF;
@@ -23,9 +27,10 @@ public class Photo implements Analysis {
     private final int bpp;
 
 
-    public Photo(Config cfg, boolean upload) {
+    public Photo(Config cfg, @Nullable UploadService.UploadBinder binder) {
 
-        UPLOAD = upload;
+        gzip = cfg.getInteger("gzip", 0);
+        this.binder = binder;
 
         PHOTO_DIM = cfg.getInteger("dimension", 256);
         X_OFF = Math.min(cfg.getInteger("x_offset", 0), App.getCamera().getResX() - PHOTO_DIM);
@@ -38,7 +43,7 @@ public class Photo implements Analysis {
     public void ProcessFrame(Frame frame) {
         String filename = "run_" + App.getPref().getInt("run_num", 0)
                 + "_" + System.currentTimeMillis() + ".png";
-        OutputStream output = Storage.newOutput(filename, UPLOAD);
+        OutputStream output = Storage.newOutput(filename, gzip, binder);
 
         if(output == null) {
             App.log().append("Failed to write image file.");
@@ -58,7 +63,6 @@ public class Photo implements Analysis {
         }
         frame.close();
         writer.close();
-
     }
 
     public void ProcessRun() {

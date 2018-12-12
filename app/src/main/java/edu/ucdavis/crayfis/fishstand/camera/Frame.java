@@ -2,7 +2,6 @@ package edu.ucdavis.crayfis.fishstand.camera;
 
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.os.Handler;
 import android.renderscript.Allocation;
@@ -45,7 +44,7 @@ public abstract class Frame {
     }
 
     abstract void readyAlloc();
-    public abstract void save(OutputStream outputStream) throws IOException;
+    public abstract void saveAndClose(OutputStream outputStream) throws IOException;
     public abstract String getFileExt();
 
     public TotalCaptureResult getTotalCaptureResult() { return result; }

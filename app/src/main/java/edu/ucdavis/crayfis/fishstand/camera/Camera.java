@@ -84,6 +84,8 @@ public class Camera {
 
     private boolean configured = false;
 
+    private long baseTimeMillis;
+
 
     public Camera() {
         App.log().append("init started at "
@@ -556,9 +558,24 @@ public class Camera {
         return cchars;
     }
 
+    public long getBaseTime() {
+        return baseTimeMillis;
+    }
+
     private final CameraCaptureSession.CaptureCallback initialCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+        public void onCaptureStarted(@NonNull CameraCaptureSession session,
+                                     @NonNull CaptureRequest request,
+                                     long timestamp, long frameNumber) {
+            baseTimeMillis = System.currentTimeMillis() - timestamp / 1000000L;
+            Log.d(TAG, "base = " + baseTimeMillis);
+        }
+
+
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                       @NonNull CaptureRequest request,
+                                       @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
 
             StringBuilder sb = new StringBuilder();

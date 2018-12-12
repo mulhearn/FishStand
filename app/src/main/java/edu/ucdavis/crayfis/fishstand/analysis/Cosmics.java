@@ -6,6 +6,7 @@ import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
 import android.renderscript.Type;
+import android.support.annotation.Nullable;
 import android.util.Log;
 
 import java.io.DataOutputStream;
@@ -17,6 +18,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Calib;
 import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.ScriptC_cosmics;
 import edu.ucdavis.crayfis.fishstand.Storage;
@@ -28,7 +30,8 @@ public class Cosmics implements Analysis {
 
     private Random rand;
 
-    private final boolean UPLOAD;
+    private UploadService.UploadBinder binder;
+    private int gzip;
 
     // parameters:
     private int region_dx;
@@ -70,9 +73,10 @@ public class Cosmics implements Analysis {
     private int out_image;
     private DataOutputStream output;
 
-    public Cosmics(Config cfg, boolean upload) {
+    public Cosmics(Config cfg, @Nullable UploadService.UploadBinder binder) {
 
-        UPLOAD = upload;
+        gzip = cfg.getInteger("gzip", 0);
+        this.binder = binder;
 
         rand = new Random();
 
@@ -191,7 +195,7 @@ public class Cosmics implements Analysis {
         if (output == null) {
             String filename = "run_" + run_num + "_cosmics_part_" + out_part + ".dat";
             App.log().append("starting new output file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename, UPLOAD);
+            OutputStream out = Storage.newOutput(filename, gzip, binder);
             output = new DataOutputStream(out);
             final int HEADER_SIZE = 11;
             final int VERSION = 1;
@@ -292,7 +296,7 @@ public class Cosmics implements Analysis {
 
             String filename = "run_" + run_num + "_cosmics_hist.dat";
             App.log().append("writing file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename, UPLOAD);
+            OutputStream out = Storage.newOutput(filename, gzip, binder);
             DataOutputStream writer = new DataOutputStream(out);
             writer.writeInt(HEADER_SIZE);
             writer.writeInt(VERSION);
@@ -313,9 +317,7 @@ public class Cosmics implements Analysis {
             for (long bin: hist_calib_copy) {
                 writer.writeLong(bin);
             }
-            writer.flush();
             writer.close();
-            out.close();
         } catch(Exception e) {
             Log.e(TAG, e.getMessage());
             Log.e(TAG, "Failed to save results.");

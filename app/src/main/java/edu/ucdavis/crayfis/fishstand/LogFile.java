@@ -15,17 +15,23 @@ public class LogFile {
     private Writer log_writer = null;
 
     private String logtxt = "";
+    private Runnable update = new Runnable() {public void run() {} };
 
-    public void newRun(int run_num, boolean upload) {
+    public void newRun(int run_num, UploadService.UploadBinder binder) {
         logtxt = "";
         update.run();
+        if(log_writer != null) {
+            try {
+                log_writer.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
         String filename = "run_" + run_num + ".log";
-        OutputStream out = Storage.newOutput(filename, upload);
-        if (out == null){
-            return;
-        }
+        OutputStream out = Storage.newOutput(filename, binder);
+        if (out == null) return;
         log_writer = new OutputStreamWriter(out);
 
         try {
@@ -36,8 +42,19 @@ public class LogFile {
         }
     }
 
+    public void finishRun() {
+        if(log_writer != null) {
+            try {
+                log_writer.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            log_writer = null;
+        }
+    }
+
     public LogFile append(String msg) {
-        logtxt = logtxt + msg;
+        logtxt += msg;
         update.run();
 
         if (log_writer == null){
@@ -51,8 +68,6 @@ public class LogFile {
         }
         return this;
     }
-
-    private Runnable update = new Runnable() {public void run() {} };
 
     public void setUpdate(Runnable update){
         this.update = update;

@@ -5,11 +5,12 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.hardware.camera2.CaptureResult;
-import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
@@ -27,6 +28,9 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ucdavis.crayfis.fishstand.analysis.Analysis;
@@ -42,13 +46,30 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     private static final float RESTART_BATTERY_PCT = .9f;
     private static final long BATTERY_CHECK_TIME = 600000L;
 
+    private static final int DEFAULT_POOL_SIZE = 3;
+    private static final long DEFAULT_KEEP_ALIVE_TIME_MS = 10000L;
+
+    private ThreadPoolExecutor frameExecutor;
+
     private Macro macro;
-    private boolean upload;
 
     private Analysis analysis;
 
     private Handler broadcast_handler;
     private HandlerThread broadcast_thread;
+
+    private UploadService.UploadBinder uploadBinder;
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            uploadBinder = (UploadService.UploadBinder) iBinder;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            uploadBinder = null;
+        }
+    };
 
     private LocalBroadcastManager broadcast_manager;
     private final BroadcastReceiver state_change_receiver = new BroadcastReceiver() {
@@ -56,10 +77,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         public void onReceive(Context context, Intent intent) {
             final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
             final String config_name = intent.getStringExtra(App.EXTRA_CONFIG_FILE);
-            upload = intent.getBooleanExtra(App.EXTRA_UPLOAD_FILES, false);
-
-            if(upload)
-                startService(new Intent(DaqService.this, UploadService.class));
+            final boolean upload = intent.getBooleanExtra(App.EXTRA_UPLOAD_FILES, false);
 
             broadcast_handler.post(new Runnable() {
                 @Override
@@ -100,6 +118,33 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                                     return;
                                 }
                             }
+
+                            if(upload) {
+                                Intent uploadIntent = new Intent(DaqService.this, UploadService.class)
+                                        .putExtra(UploadService.EXTRA_POOL_SIZE,
+                                                cfg.getInteger("upload_threads", 3))
+                                        .putExtra(UploadService.EXTRA_KEEP_ALIVE_TIME_MS,
+                                                cfg.getLong("upload_keep_alive_time", 10000L));
+                                startService(uploadIntent);
+                                if(uploadBinder == null)
+                                    bindService(uploadIntent, serviceConnection, BIND_AUTO_CREATE);
+
+                                // wait for binding to finish
+                                int t = 0;
+                                final int dt = 100;
+                                final int timeout = 5000;
+
+                                while(uploadBinder == null) {
+                                    try {
+                                        Thread.sleep(dt);
+                                        t += dt;
+                                        if(t >= timeout) break;
+                                    } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            }
+
                             Run(cfg);
                             break;
                         case STOPPING:
@@ -174,6 +219,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         //App.log().append("DaqService received onDestroy\n");
 
         stopForeground(true);
+
         broadcast_manager.unregisterReceiver(state_change_receiver);
         broadcast_thread.quitSafely();
         try {
@@ -199,11 +245,16 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     public void Run(Config cfg) {
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().newRun(run_num, upload);
+        App.log().newRun(run_num, uploadBinder);
         App.log().append("init called.\n");
         cfg.logConfig();
 
         App.getCamera().configure(cfg);
+
+        int poolSize = cfg.getInteger("frame_threads", DEFAULT_POOL_SIZE);
+        long keepAlive = cfg.getLong("frame_keep_alive_time", DEFAULT_KEEP_ALIVE_TIME_MS);
+        frameExecutor = new ThreadPoolExecutor(poolSize, poolSize, keepAlive, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>());
 
         events = new AtomicInteger();
         processing = new AtomicInteger();
@@ -220,24 +271,24 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         switch (analysis_name.toLowerCase()) {
             case "pixelstats":
-                analysis = new PixelStats(cfg, upload);
+                analysis = new PixelStats(cfg, uploadBinder);
                 break;
             case "photo":
-                analysis = new Photo(cfg, upload);
+                analysis = new Photo(cfg, uploadBinder);
                 break;
             case "cosmics":
-                analysis = new Cosmics(cfg, upload);
+                analysis = new Cosmics(cfg, uploadBinder);
                 break;
             case "triggered_image":
-                analysis = new TriggeredImage(cfg, upload);
+                analysis = new TriggeredImage(cfg, uploadBinder);
                 break;
 
             default:
                 analysis = null;
         }
 
-        App.log().append("starting run " + run_num + "\n");
-        App.log().append("Finished initialization.\n");
+        App.log().append("starting run " + run_num + "\n")
+                .append("Finished initialization.\n");
 
         if ((!run_finished) && (delay > 0)) {
             App.log().append("Delaying start of first run by " + delay + " seconds.\n");
@@ -253,15 +304,13 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         EndRun();
     }
 
-    private void EndRun(){
+    private void EndRun() {
         // wait for all jobs to finish...
         if (processing.get() > 0){
             Runnable r = new Runnable(){public void run(){EndRun();};};
             broadcast_handler.postDelayed(r,1000);
             return;
         }
-
-        boolean restart = macro != null && macro.hasNext() && run_finished;
 
         if (analysis != null){
             analysis.ProcessRun();
@@ -274,12 +323,14 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().append("ending run " + run_num + " at " + date + "\n");
+        App.log().append("ending run " + run_num + " at " + date + "\n")
+                .finishRun();
         run_num++;
         App.getEdit()
                 .putInt("run_num", run_num)
                 .commit();
 
+        boolean restart = macro != null && macro.hasNext() && run_finished;
         if (restart) {
             if(checkBatteryPct(MIN_BATTERY_PCT)) {
                 App.updateState(App.STATE.RUNNING);
@@ -300,6 +351,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             idleTimer.scheduleAtFixedRate(idleTimerTask, BATTERY_CHECK_TIME, BATTERY_CHECK_TIME);
             App.updateState(App.STATE.CHARGING);
         } else {
+            if(uploadBinder != null) {
+                unbindService(serviceConnection);
+                uploadBinder = null;
+            }
             App.updateState(App.STATE.READY);
         }
 
@@ -352,7 +407,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             }
         } else {
             try {
-                AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+                frameExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
                         if (analysis != null){

@@ -148,51 +148,58 @@ public class Config {
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
         Writer writer = new OutputStreamWriter(out);
         try {
-            writer.write("# config\n");
-            writer.write("# Fishstand Run Configuration File\n");
-            writer.write("# Created on Run " + date + "\n\n");
+            writer.append("# config\n")
+                    .append("# Fishstand Run Configuration File\n")
+                    .append("# Created on Run " + date + "\n\n")
 
-            writer.write("tag # default_tag\n");
+                    .append("tag # default_tag\n")
 
-            writer.write("\n### camera ###\n");
-            writer.write("num # 1\n");
-            writer.write("sensitivity_reference # iso value, defaults to max analog\n");
-            writer.write("exposure_reference # ns, defaults to maximum exposure\n");
-            writer.write("sensitivity_scale # 1.0 \n");
-            writer.write("exposure_scale # 1.0\n");
-            writer.write("delay # ms\n");
+                    .append("\n### camera ###\n")
+                    .append("num # 1\n")
+                    .append("sensitivity_reference # iso value, defaults to max analog\n")
+                    .append("exposure_reference # ns, defaults to maximum exposure\n")
+                    .append("sensitivity_scale # 1.0 \n")
+                    .append("exposure_scale # 1.0\n")
+                    .append("delay # ms\n")
 
-            writer.write("\n### additional formats ###\n");
-            writer.write("yuv # bool\n");
-            writer.write("resolution # RESxRES, defaults to max\n");
-            writer.write("saturation # 1023\n");
+                    .append("\n### additional formats ###\n")
+                    .append("yuv # bool\n")
+                    .append("resolution # RESxRES, defaults to max\n")
+                    .append("saturation # 1023\n")
 
-            writer.write("\n### photo ###\n");
-            writer.write("analysis # photo\n");
-            writer.write("dimension # 256\n");
-            writer.write("x_offset # 0\n");
-            writer.write("y_offset # 0\n");
+                    .append("\n### processing ###\n")
+                    .append("gzip # 0-9\n")
+                    .append("frame_threads # 3\n")
+                    .append("frame_keep_alive_time # ms\n")
+                    .append("upload_threads # 3\n")
+                    .append("upload_keep_alive_time # ms\n")
 
-            writer.write("\n### pixelstats ###\n");
-            writer.write("analysis # pixelstats\n");
-            writer.write("filesize # 5000000\n");
-            writer.write("samplefile # 171\n");
+                    .append("\n### photo ###\n")
+                    .append("analysis # photo\n")
+                    .append("dimension # 256\n")
+                    .append("x_offset # 0\n")
+                    .append("y_offset # 0\n")
 
-            writer.write("\n### cosmics ###\n");
-            writer.write("analysis # cosmics\n");
-            writer.write("num_zerobias # 10\n");
-            writer.write("raw_thresh # 10\n");
-            writer.write("threshold # 10 ...\n");
-            writer.write("prescale # 100 ...\n");
-            writer.write("images_per_file # 1000\n");
-            writer.write("max_pixel # 100 (can't exceed 100)\n");
-            writer.write("region_dx # 2\n");
-            writer.write("region_dy # 2\n");
+                    .append("\n### pixelstats ###\n")
+                    .append("analysis # pixelstats\n")
+                    .append("filesize # 5000000\n")
+                    .append("samplefile # 171\n")
 
-            writer.write("\n### triggered_image ###\n");
-            writer.write("analysis # triggered_image\n");
-            writer.write("sample_frac # 1.0 = mean (default), 0.0 = max\n");
-            writer.write("thresh # 0.0\n");
+                    .append("\n### cosmics ###\n")
+                    .append("analysis # cosmics\n")
+                    .append("num_zerobias # 10\n")
+                    .append("raw_thresh # 10\n")
+                    .append("threshold # 10 ...\n")
+                    .append("prescale # 100 ...\n")
+                    .append("images_per_file # 1000\n")
+                    .append("max_pixel # 100 (can't exceed 100)\n")
+                    .append("region_dx # 2\n")
+                    .append("region_dy # 2\n")
+
+                    .append("\n### triggered_image ###\n")
+                    .append("analysis # triggered_image\n")
+                    .append("sample_frac # 1.0 = mean (default), 0.0 = max\n")
+                    .append("thresh # 0.0\n");
 
             writer.flush();
             writer.close();

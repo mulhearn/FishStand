@@ -1,19 +1,18 @@
 package edu.ucdavis.crayfis.fishstand;
 
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.os.Binder;
 import android.os.Build;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
 import android.provider.Settings;
+import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import android.util.Pair;
+import android.util.SparseArray;
 
 import com.amazonaws.mobile.client.AWSMobileClient;
 import com.amazonaws.mobile.client.Callback;
@@ -28,27 +27,40 @@ import com.amazonaws.services.s3.AmazonS3Client;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class UploadService extends Service {
 
     private static final String BUCKET_NAME = "fishstand-data";
     private static final String TAG = "UploadService";
 
+    public static final String EXTRA_POOL_SIZE = "extra_upload_pool_size";
+    public static final String EXTRA_KEEP_ALIVE_TIME_MS = "extra_upload_keep_alive";
+
+    private static final int DEFAULT_POOL_SIZE = 3;
+    private static final long DEFAULT_KEEP_ALIVE_TIME_MS = 10000L;
+
+    private static final long NOTIFICATION_UPDATE_INTERVAL = 1000L;
+
     // notifications info
     private static final String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand.UploadService";
     private static final String CHANNEL_NAME = "FishStand Uploads";
     private static final int FOREGROUND_ID = 102;
 
-    private String deviceId;
-
-    private Handler uploadHandler;
-    private HandlerThread uploadThread;
-
     private TransferUtility transferUtility;
-    private NotificationCompat.Builder notificationBuilder;
 
-    private Semaphore uploadLock = new Semaphore(1);
+    private ThreadPoolExecutor uploadThreadPool;
+    private final SparseArray<String> currentUploadNames = new SparseArray<>();
+    private final SparseArray<Pair<Long, Long>> currentUploadStatuses = new SparseArray<>();
+
+    private UploadBinder binder;
+
+    private final Timer notificationTimer = new Timer();
 
     @Override
     public void onCreate() {
@@ -76,57 +88,63 @@ public class UploadService extends Service {
                 .s3Client(s3)
                 .build();
 
-        uploadThread = new HandlerThread("Uploads");
-        uploadThread.start();
-        uploadHandler = new Handler(uploadThread.getLooper());
     }
 
     @Override
     public void onDestroy() {
-        uploadThread.quitSafely();
-        try {
-            uploadThread.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
 
+        uploadThreadPool.shutdown();
         stopService(new Intent(this, TransferService.class));
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
 
-        deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        // check for a restart from START_STICKY
+        if(intent == null) return START_STICKY;
 
-        uploadHandler.post(new Runnable() {
+        // start notification updates
+        createUpdatingNotifications(notificationTimer, NOTIFICATION_UPDATE_INTERVAL);
+
+        int poolSize = intent.getIntExtra(EXTRA_POOL_SIZE, DEFAULT_POOL_SIZE);
+        long keepAliveTime = intent.getLongExtra(EXTRA_KEEP_ALIVE_TIME_MS, DEFAULT_KEEP_ALIVE_TIME_MS);
+
+        uploadThreadPool = new ThreadPoolExecutor(poolSize, poolSize, keepAliveTime, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>());
+
+        // get old files in the uploads directory at this time
+        File[] cache = Storage.listFiles(new FilenameFilter() {
             @Override
-            public void run() {
-                while (true) {
-                    File[] cache = Storage.listFiles(new FilenameFilter() {
-                        @Override
-                        public boolean accept(File file, String fname) {
-                            return !fname.endsWith(".cfg")
-                                    && !fname.endsWith(".mac");
-                        }
-                    }, true);
-
-                    if (cache != null && cache.length > 0) {
-                        if (upload(cache[0])) cache[0].delete();
-                    } else {
-                        break;
-                    }
-                }
-
-                if (App.getAppState() != App.STATE.READY) {
-                    uploadHandler.postDelayed(this, 60000L);
-                } else {
-                    stopSelf();
-                }
+            public boolean accept(File file, String fname) {
+                return !fname.endsWith(".cfg")
+                        && !fname.endsWith(".mac");
             }
-        });
+        }, true);
 
-        // now start running in foreground
 
+        for(final File f : cache)
+            // upload each file, with EXTRA_POOL_SIZE jobs running concurrently
+            uploadThreadPool.execute(new UploadTask(f));
+
+        return START_STICKY;
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        if(binder == null) {
+            binder = new UploadBinder();
+        }
+        return binder;
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        binder = null;
+        return false;
+    }
+
+
+    private void createUpdatingNotifications(Timer timer, long interval) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel notificationChannel
                     = new NotificationChannel(CHANNEL_ID, CHANNEL_NAME,
@@ -136,62 +154,118 @@ public class UploadService extends Service {
             manager.createNotificationChannel(notificationChannel);
         }
 
-        notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
+        final NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("FishStand Uploads")
                 .setTicker("FishStand Uploads")
                 .setSmallIcon(R.drawable.ic_upload_icon)
-                //.setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
-                //.setContentIntent(pendingIntent)
                 .setOngoing(true);
 
-        startForeground(FOREGROUND_ID, notificationBuilder.build());
-
-        return START_STICKY;
-    }
-
-
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
-
-    synchronized boolean upload(File f) {
-        NotificationManager manager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-        manager.notify(FOREGROUND_ID, notificationBuilder
-                .setContentText("Uploading " + f.getName())
-                .build());
-
-        String keyname = String.format("public/%s/%s", deviceId, f.getName());
-        TransferObserver uploadObserver = transferUtility.upload(BUCKET_NAME, keyname, f);
-
-        uploadObserver.setTransferListener(new TransferListener() {
+        TimerTask notificationUpdateTask = new TimerTask() {
             @Override
-            public void onStateChanged(int id, TransferState state) {
-                if (state == TransferState.COMPLETED
-                        || state == TransferState.FAILED) {
-                    uploadLock.release();
+            public void run() {
+                NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                StringBuilder content = new StringBuilder();
+                for(int i=0; i<currentUploadNames.size(); i++) {
+                    int key = currentUploadNames.keyAt(i);
+                    String name = currentUploadNames.get(key);
+                    Pair<Long, Long> status = currentUploadStatuses.get(key);
+                    content.append(name);
+                    if(status != null) {
+                        content.append(" ")
+                                .append(status.first)
+                                .append("/")
+                                .append(status.second)
+                                .append("\n");
+                    }
                 }
+                manager.notify(FOREGROUND_ID, notificationBuilder
+                        .setStyle(new NotificationCompat.BigTextStyle().bigText(content.toString()))
+                        .build());
             }
+        };
 
-            @Override
-            public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
-            }
+        timer.scheduleAtFixedRate(notificationUpdateTask, 0, interval);
 
-            @Override
-            public void onError(int id, Exception ex) {
-                notifyAll();
-            }
-        });
+        startForeground(FOREGROUND_ID, notificationBuilder.build());
+    }
 
-        while (uploadObserver.getState() != TransferState.COMPLETED
-                && uploadObserver.getState() != TransferState.FAILED) {
+    private class UploadTask implements Runnable {
+
+        private final File uploadFile;
+        private final Semaphore uploadLock = new Semaphore(1);
+        private final String deviceId
+                = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+
+        private UploadTask(File f) {
+            uploadFile = f;
+        }
+        
+        @Override
+        public void run() {
+
+            String keyname = String.format("public/%s/%s", deviceId, uploadFile.getName());
+
             try {
-                uploadLock.acquire();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                TransferObserver uploadObserver = transferUtility.upload(BUCKET_NAME, keyname, uploadFile);
+
+                currentUploadNames.put(uploadObserver.getId(), uploadFile.getName());
+
+                uploadObserver.setTransferListener(new TransferListener() {
+                    @Override
+                    public void onStateChanged(int id, TransferState state) {
+                        if (state == TransferState.COMPLETED
+                                || state == TransferState.FAILED) {
+                            currentUploadNames.remove(id);
+                            currentUploadStatuses.remove(id);
+                            uploadLock.release();
+                        }
+                    }
+
+                    @Override
+                    public void onProgressChanged(int id, long bytesCurrent, long bytesTotal) {
+                        currentUploadStatuses.put(id, Pair.create(bytesCurrent, bytesTotal));
+                    }
+
+                    @Override
+                    public void onError(int id, Exception ex) {
+
+                    }
+                });
+
+                while (uploadObserver.getState() != TransferState.COMPLETED
+                        && uploadObserver.getState() != TransferState.FAILED) {
+                    try {
+                        uploadLock.acquire();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        e.printStackTrace();
+                    }
+                }
+
+                if (uploadObserver.getState() == TransferState.COMPLETED) uploadFile.delete();
+
+            } catch (IllegalArgumentException e) {
+                // TODO: already uploaded file?  not sure why this happens sometimes
                 e.printStackTrace();
             }
-        }
 
-        return uploadObserver.getState() == TransferState.COMPLETED;
+            // stop if this is the last upload
+            if(binder == null && uploadThreadPool.getActiveCount() <= 1) {
+                Log.i(TAG, "Stopping UploadService.");
+
+                notificationTimer.cancel();
+                stopForeground(true);
+                stopSelf();
+            }
+        }
+    }
+
+    public class UploadBinder extends Binder {
+        private UploadBinder() { }
+
+        public void uploadFile(File f) {
+            Log.d(TAG, "Uploading " + f.getName());
+            uploadThreadPool.execute(new UploadTask(f));
+        }
     }
 }

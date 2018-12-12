@@ -13,6 +13,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.ScriptC_pixelstats;
 import edu.ucdavis.crayfis.fishstand.Storage;
@@ -20,7 +21,8 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
 
-    private final boolean UPLOAD;
+    private final int gzip;
+    private UploadService.UploadBinder binder;
 
     private final AtomicInteger images = new AtomicInteger();
 
@@ -43,9 +45,10 @@ public class PixelStats implements Analysis {
 
     private final ReentrantLock script_lock = new ReentrantLock();
 
-    public PixelStats(Config cfg, boolean upload) {
+    public PixelStats(Config cfg, UploadService.UploadBinder binder) {
 
-        UPLOAD = upload;
+        gzip = cfg.getInteger("gzip", 0);
+        this.binder = binder;
 
         YUV = cfg.getBoolean("yuv", false);
         FILE_SIZE = cfg.getLong("filesize", 5000000);
@@ -172,7 +175,7 @@ public class PixelStats implements Analysis {
 
                 String filename = "run_" + run_num + "_part_" + ifile + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename, UPLOAD);
+                OutputStream out = Storage.newOutput(filename, gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
@@ -209,16 +212,15 @@ public class PixelStats implements Analysis {
                         writer.writeShort(second_buf[i]);
                     }
                 }
-                writer.flush();
+
                 writer.close();
-                out.close();
             }
 
             // add an extra downsampled file
             if (DOWNSAMPLE_STEP > 0) {
                 String filename = "run_" + run_num + "_sample" + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename, UPLOAD);
+                OutputStream out = Storage.newOutput(filename, gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);

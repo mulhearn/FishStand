@@ -2,9 +2,11 @@ package edu.ucdavis.crayfis.fishstand.analysis;
 
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.os.SystemClock;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
+import android.util.Log;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -14,11 +16,14 @@ import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
 import edu.ucdavis.crayfis.fishstand.ScriptC_hist;
 import edu.ucdavis.crayfis.fishstand.Storage;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 
 public class TriggeredImage implements Analysis {
+
+    private static final String TAG = "TriggeredImage";
     
-    private final boolean UPLOAD;
+    private UploadService.UploadBinder binder;
 
     private final int SAMPLE_N;
     private final int SAMPLE_THRESH;
@@ -27,12 +32,14 @@ public class TriggeredImage implements Analysis {
     private final Allocation aout;
 
     private final boolean YUV;
+    private final int gzip;
 
     private final Semaphore SCRIPT_LOCK = new Semaphore(1);
 
-    public TriggeredImage(Config config, boolean upload) {
-        
-        UPLOAD = upload;
+    public TriggeredImage(Config config, UploadService.UploadBinder binder) {
+
+        gzip = config.getInteger("gzip", 0);
+        this.binder = binder;
         
         double sampleFrac = config.getDouble("sample_frac", 1.0);
         double thresh = config.getDouble("thresh", 0.0);
@@ -81,10 +88,13 @@ public class TriggeredImage implements Analysis {
         if(sum > SAMPLE_THRESH) {
             try {
                 TotalCaptureResult result = frame.getTotalCaptureResult();
-                String filename = result.get(CaptureResult.SENSOR_TIMESTAMP) + frame.getFileExt();
-                OutputStream out = Storage.newOutput(filename, UPLOAD);
+                long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) / 1000000L
+                        + App.getCamera().getBaseTime();
+                String filename = timestamp + frame.getFileExt();
+
+                OutputStream out = Storage.newOutput(filename, gzip, binder);
                 if(out != null) {
-                    frame.save(out);
+                    frame.saveAndClose(out);
                     out.close();
                 }
             } catch (IOException e) {
