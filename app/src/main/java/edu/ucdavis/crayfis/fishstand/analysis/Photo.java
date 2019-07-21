@@ -15,6 +15,7 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Photo implements Analysis {
     private static final String TAG = "Photo";
+    public static final String NAME = "photo";
 
     private final int gzip;
     private UploadService.UploadBinder binder;
@@ -25,6 +26,8 @@ public class Photo implements Analysis {
 
     private final ImageInfo info;
     private final int bpp;
+
+    private final String jobTag;
 
 
     public Photo(Config cfg, @Nullable UploadService.UploadBinder binder) {
@@ -38,12 +41,14 @@ public class Photo implements Analysis {
 
         bpp = cfg.getBoolean("yuv", false) ? 8 : 16;
         info = new ImageInfo(PHOTO_DIM, PHOTO_DIM, bpp, false, true, false);
+
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
         String filename = "run_" + App.getPref().getInt("run_num", 0)
                 + "_" + System.currentTimeMillis() + ".png";
-        OutputStream output = Storage.newOutput(filename, gzip, binder);
+        OutputStream output = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
 
         if(output == null) {
             App.log().append("Failed to write image file.");

@@ -245,7 +245,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     public void Run(Config cfg) {
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().newRun(run_num, uploadBinder);
+        App.log().newRun(run_num, cfg, uploadBinder);
         App.log().append("init called.\n");
         cfg.logConfig();
 
@@ -270,16 +270,16 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 .append("delay:          " + delay + "\n");
 
         switch (analysis_name.toLowerCase()) {
-            case "pixelstats":
+            case PixelStats.NAME:
                 analysis = new PixelStats(cfg, uploadBinder);
                 break;
-            case "photo":
+            case Photo.NAME:
                 analysis = new Photo(cfg, uploadBinder);
                 break;
-            case "cosmics":
+            case Cosmics.NAME:
                 analysis = new Cosmics(cfg, uploadBinder);
                 break;
-            case "triggered_image":
+            case TriggeredImage.NAME:
                 analysis = new TriggeredImage(cfg, uploadBinder);
                 break;
 

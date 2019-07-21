@@ -25,6 +25,7 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Cosmics implements Analysis {
     private static final String TAG = "Cosmics";
+    public static final String NAME = "cosmics";
 
     private AtomicInteger images = new AtomicInteger();
 
@@ -72,6 +73,8 @@ public class Cosmics implements Analysis {
     private int out_part;
     private int out_image;
     private DataOutputStream output;
+
+    private final String jobTag;
 
     public Cosmics(Config cfg, @Nullable UploadService.UploadBinder binder) {
 
@@ -132,6 +135,7 @@ public class Cosmics implements Analysis {
         out_part = 0;
         out_image = 0;
         output = null;
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
@@ -195,7 +199,7 @@ public class Cosmics implements Analysis {
         if (output == null) {
             String filename = "run_" + run_num + "_cosmics_part_" + out_part + ".dat";
             App.log().append("starting new output file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename, gzip, binder);
+            OutputStream out = Storage.newOutput(filename, jobTag, "cosmics", gzip, binder);
             output = new DataOutputStream(out);
             final int HEADER_SIZE = 11;
             final int VERSION = 1;
@@ -296,7 +300,7 @@ public class Cosmics implements Analysis {
 
             String filename = "run_" + run_num + "_cosmics_hist.dat";
             App.log().append("writing file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename, gzip, binder);
+            OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
             DataOutputStream writer = new DataOutputStream(out);
             writer.writeInt(HEADER_SIZE);
             writer.writeInt(VERSION);

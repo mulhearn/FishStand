@@ -12,13 +12,16 @@ import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.zip.GZIPOutputStream;
 
 public class Storage {
     private static final String WORK_DIR = "FishStand";
     private static final String UPLOAD_DIR = "uploads";
 
-    private static File getPath(boolean upload) {
+    public static File getPath(boolean upload) {
         File path = new File(Environment.getExternalStoragePublicDirectory(""), WORK_DIR);
         path.mkdirs();
         if(upload) {
@@ -44,9 +47,28 @@ public class Storage {
     public static OutputStream newOutput(String filename, int compression,
                                          @Nullable UploadService.UploadBinder binder) {
 
+        return newOutput(filename, null, null, compression, binder);
+    }
+
+    public static OutputStream newOutput(String filename, String tag, String analysis,
+                                         @Nullable UploadService.UploadBinder binder) {
+        return newOutput(filename, tag, analysis, 0, binder);
+    }
+
+    public static OutputStream newOutput(@NonNull String filename, String tag, String analysis,
+                                         int compression, @Nullable UploadService.UploadBinder binder) {
+
         if(compression > 0 && !filename.endsWith(".gz"))
             filename += ".gz";
-        File path = getPath(binder != null);
+
+        String pathString = getPath(binder != null).getAbsolutePath();
+
+        if(tag != null) pathString += "/" + tag;
+        if(analysis != null) pathString += "/" + analysis;
+
+        File path = new File(pathString);
+        path.mkdirs();
+
         File outfile = new File(path, filename);
 
         try {

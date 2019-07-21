@@ -20,6 +20,7 @@ import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
+    public static final String NAME = "pixelstats"; 
 
     private final int gzip;
     private UploadService.UploadBinder binder;
@@ -44,6 +45,8 @@ public class PixelStats implements Analysis {
     private final int DOWNSAMPLE_STEP;
 
     private final ReentrantLock script_lock = new ReentrantLock();
+    
+    private final String jobTag;
 
     public PixelStats(Config cfg, UploadService.UploadBinder binder) {
 
@@ -93,6 +96,8 @@ public class PixelStats implements Analysis {
         script.invoke_set_partition(partition_start, partition_end);
 
         App.log().append("finished allocating memory.\n");
+        
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
@@ -175,7 +180,7 @@ public class PixelStats implements Analysis {
 
                 String filename = "run_" + run_num + "_part_" + ifile + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename, gzip, binder);
+                OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
@@ -220,7 +225,7 @@ public class PixelStats implements Analysis {
             if (DOWNSAMPLE_STEP > 0) {
                 String filename = "run_" + run_num + "_sample" + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename, gzip, binder);
+                OutputStream out = Storage.newOutput(filename, jobTag, "pixelstats", gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);

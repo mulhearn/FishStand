@@ -22,6 +22,7 @@ import edu.ucdavis.crayfis.fishstand.camera.Frame;
 public class TriggeredImage implements Analysis {
 
     private static final String TAG = "TriggeredImage";
+    public static final String NAME = "triggered_image";
     
     private UploadService.UploadBinder binder;
 
@@ -36,25 +37,29 @@ public class TriggeredImage implements Analysis {
 
     private final Semaphore SCRIPT_LOCK = new Semaphore(1);
 
-    public TriggeredImage(Config config, UploadService.UploadBinder binder) {
+    private final String jobTag;
 
-        gzip = config.getInteger("gzip", 0);
+    public TriggeredImage(Config cfg, UploadService.UploadBinder binder) {
+
+        gzip = cfg.getInteger("gzip", 0);
         this.binder = binder;
         
-        double sampleFrac = config.getDouble("sample_frac", 1.0);
-        double thresh = config.getDouble("thresh", 0.0);
+        double sampleFrac = cfg.getDouble("sample_frac", 1.0);
+        double thresh = cfg.getDouble("thresh", 0.0);
 
         int nPix = App.getCamera().getResX() * App.getCamera().getResY();
         SAMPLE_N = Math.max((int) (sampleFrac * nPix), 1);
         SAMPLE_THRESH = (int) (SAMPLE_N * thresh);
 
-        YUV = config.getBoolean("YUV", false);
+        YUV = cfg.getBoolean("YUV", false);
 
         RenderScript rs = App.getRenderScript();
         script = new ScriptC_hist(rs);
 
         aout = Allocation.createSized(rs, Element.U32(rs), 1024);
         script.bind_ahist(aout);
+        
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
@@ -92,7 +97,7 @@ public class TriggeredImage implements Analysis {
                         + App.getCamera().getBaseTime();
                 String filename = timestamp + frame.getFileExt();
 
-                OutputStream out = Storage.newOutput(filename, gzip, binder);
+                OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
                 if(out != null) {
                     frame.saveAndClose(out);
                     out.close();

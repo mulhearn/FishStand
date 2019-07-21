@@ -17,7 +17,7 @@ public class LogFile {
     private String logtxt = "";
     private Runnable update = new Runnable() {public void run() {} };
 
-    public void newRun(int run_num, UploadService.UploadBinder binder) {
+    public void newRun(int run_num, Config cfg, UploadService.UploadBinder binder) {
         logtxt = "";
         update.run();
         if(log_writer != null) {
@@ -28,9 +28,12 @@ public class LogFile {
             }
         }
 
+        String jobTag = cfg.getString("tag", "unspecified");
+        String analysis = cfg.getString("analysis", null);
+
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
         String filename = "run_" + run_num + ".log";
-        OutputStream out = Storage.newOutput(filename, binder);
+        OutputStream out = Storage.newOutput(filename, jobTag, analysis, binder);
         if (out == null) return;
         log_writer = new OutputStreamWriter(out);
 

@@ -27,6 +27,7 @@ import com.amazonaws.services.s3.AmazonS3Client;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.net.URI;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -117,7 +118,8 @@ public class UploadService extends Service {
             @Override
             public boolean accept(File file, String fname) {
                 return !fname.endsWith(".cfg")
-                        && !fname.endsWith(".mac");
+                        && !fname.endsWith(".mac")
+                        && file.isFile();
             }
         }, true);
 
@@ -203,7 +205,17 @@ public class UploadService extends Service {
         @Override
         public void run() {
 
-            String keyname = String.format("public/%s/%s", deviceId, uploadFile.getName());
+            Log.d(TAG, uploadFile.getAbsolutePath());
+
+            URI base = Storage.getPath(true).toURI();
+            String relative = base.relativize(uploadFile.toURI()).getPath();
+            String[] dirs = relative.split("/");
+
+            String tag = dirs[0];
+            String analysis = dirs[1];
+            String filename = dirs[2];
+
+            String keyname = String.format("public/%s/%s/%s/%s", tag, deviceId, analysis, filename);
 
             try {
                 TransferObserver uploadObserver = transferUtility.upload(BUCKET_NAME, keyname, uploadFile);
