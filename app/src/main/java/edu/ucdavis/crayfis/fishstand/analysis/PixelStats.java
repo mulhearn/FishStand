@@ -13,36 +13,45 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.ScriptC_pixelstats;
 import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class PixelStats implements Analysis {
     private static final String TAG = "PixelStats";
+    public static final String NAME = "pixelstats"; 
 
-    private AtomicInteger images = new AtomicInteger();
-    final private int num_pixel;
+    private final int gzip;
+    private UploadService.UploadBinder binder;
 
-    final private int num_partition;
-    final private int partition_index;
-    private int partition_start;
-    private int partition_end;
-    private int partition_size;
+    private final AtomicInteger images = new AtomicInteger();
 
-    private Allocation sum_alloc;
-    private Allocation ssq_alloc;
-    private Allocation mxv_alloc;
-    private Allocation sec_alloc;
+    private final int num_partition;
+    private final int partition_index;
+    private final int partition_start;
+    private final int partition_end;
+    private final int partition_size;
 
-    private ScriptC_pixelstats script;
+    private final Allocation sum_alloc;
+    private final Allocation ssq_alloc;
+    private final Allocation mxv_alloc;
+    private final Allocation sec_alloc;
+
+    private final ScriptC_pixelstats script;
 
     private final boolean YUV;
     private final long FILE_SIZE;
     private final int DOWNSAMPLE_STEP;
 
-    private static final ReentrantLock script_lock = new ReentrantLock();
+    private final ReentrantLock script_lock = new ReentrantLock();
+    
+    private final String jobTag;
 
-    public PixelStats(Config cfg) {
+    public PixelStats(Config cfg, UploadService.UploadBinder binder) {
+
+        gzip = cfg.getInteger("gzip", 0);
+        this.binder = binder;
 
         YUV = cfg.getBoolean("yuv", false);
         FILE_SIZE = cfg.getLong("filesize", 5000000);
@@ -50,7 +59,7 @@ public class PixelStats implements Analysis {
 
         int nx = App.getCamera().getResX();
         int ny = App.getCamera().getResY();
-        num_pixel = nx * ny;
+        int num_pixel = nx * ny;
 
         num_partition   = cfg.getInteger("num_partition", 1);
         partition_index = cfg.getInteger("partition_index", 0);
@@ -60,10 +69,7 @@ public class PixelStats implements Analysis {
             pixels_per_partition += 1;
         }
         partition_start = pixels_per_partition * partition_index;
-        partition_end   = pixels_per_partition * (partition_index+1);
-        if (partition_end > num_pixel){
-            partition_end = num_pixel;
-        }
+        partition_end   = Math.min(pixels_per_partition * (partition_index+1), num_pixel);
         partition_size = partition_end - partition_start;
 
         if (num_partition > 1){
@@ -90,6 +96,8 @@ public class PixelStats implements Analysis {
         script.invoke_set_partition(partition_start, partition_end);
 
         App.log().append("finished allocating memory.\n");
+        
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
@@ -172,7 +180,7 @@ public class PixelStats implements Analysis {
 
                 String filename = "run_" + run_num + "_part_" + ifile + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename);
+                OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);
@@ -209,16 +217,15 @@ public class PixelStats implements Analysis {
                         writer.writeShort(second_buf[i]);
                     }
                 }
-                writer.flush();
+
                 writer.close();
-                out.close();
             }
 
             // add an extra downsampled file
             if (DOWNSAMPLE_STEP > 0) {
                 String filename = "run_" + run_num + "_sample" + "_pixelstats.dat";
                 App.log().append("writing file " + filename + "\n");
-                OutputStream out = Storage.newOutput(filename);
+                OutputStream out = Storage.newOutput(filename, jobTag, "pixelstats", gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
                 writer.writeInt(VERSION);

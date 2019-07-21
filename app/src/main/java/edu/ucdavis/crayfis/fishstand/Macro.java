@@ -48,10 +48,7 @@ public class Macro {
     public static Macro create(String filename) {
         if (!filename.endsWith(".mac")) throw new IllegalArgumentException("Invalid file name");
 
-        File path = new File(Environment.getExternalStoragePublicDirectory(""),
-                Storage.WORK_DIR);
-        path.mkdirs();
-        File cfg_file = new File(path, filename);
+        File cfg_file = Storage.getFile(filename);
 
         if (cfg_file.exists()) {
 
@@ -167,10 +164,7 @@ public class Macro {
                 lines.set(current_line, "! " + line);
 
                 // overwrite file
-                File path = new File(Environment.getExternalStoragePublicDirectory(""),
-                        Storage.WORK_DIR);
-                path.mkdirs();
-                File cfg_file = new File(path, FILE_NAME);
+                File cfg_file = Storage.getFile(FILE_NAME);
                 try {
                     OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(cfg_file));
                     for(String l : lines) {

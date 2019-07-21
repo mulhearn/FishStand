@@ -18,6 +18,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,7 +33,7 @@ public class MainActivity extends AppCompatActivity {
     private BroadcastReceiver logUpdater;     // update log
     private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
 
-    private Intent service;
+    private Intent daq;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,8 +60,9 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, needed.toArray(new String[needed.size()]), MY_PERMISSIONS_REQUEST);
         }
 
-        service = new Intent(MainActivity.this, DaqService.class);
-        startService(service);
+        Switch upload = findViewById(R.id.upload_switch);
+        daq = new Intent(MainActivity.this, DaqService.class);
+        startService(daq);
     }
 
     @Override
@@ -72,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
                 int duration = Toast.LENGTH_LONG;
                 Toast toast = Toast.makeText(context, text, duration);
                 toast.show();
-                stopService(service);
+                stopService(daq);
                 finish();
             }
         }
@@ -86,6 +88,8 @@ public class MainActivity extends AppCompatActivity {
         stateUpdater = App.getMessage().onStateUpdate(new Runnable() {
             public void run() {
                 Button button = findViewById(R.id.start_stop_btn);
+                Switch uploadSwitch = findViewById(R.id.upload_switch);
+                uploadSwitch.setEnabled(App.getAppState() == App.STATE.READY);
                 TextView status = findViewById(R.id.status1);
 
                 SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
@@ -111,6 +115,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
         App.getMessage().updateState();
 
         TextView status = findViewById(R.id.status2);
@@ -131,7 +136,7 @@ public class MainActivity extends AppCompatActivity {
         App.getMessage().unregister(stateUpdater);
         App.getMessage().unregister(logUpdater);
         if(App.getAppState() == App.STATE.READY) {
-            stopService(service);
+            stopService(daq);
         }
     }
 
@@ -144,10 +149,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        Switch upload = findViewById(R.id.upload_switch);
+
         switch (App.getAppState()) {
             case READY:
                 Log.i(TAG, "button starting run");
-                App.updateState(App.STATE.RUNNING, filename);
+                App.updateState(App.STATE.RUNNING, filename, upload.isChecked());
                 break;
             case RUNNING:
                 Log.i(TAG, "button stopping run");

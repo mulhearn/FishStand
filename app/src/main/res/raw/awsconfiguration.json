@@ -1,0 +1,29 @@
+{
+    "UserAgent": "aws-amplify-cli/0.1.0",
+    "Version": "1.0",
+    "IdentityManager": {
+        "Default": {}
+    },
+    "CredentialsProvider": {
+        "CognitoIdentity": {
+            "Default": {
+                "PoolId": "us-east-1:2cf346ca-cda0-4531-b70c-9ce19ea9d1cd",
+                "Region": "us-east-1"
+            }
+        }
+    },
+    "CognitoUserPool": {
+        "Default": {
+            "PoolId": "us-east-1_tMiVthhl9",
+            "AppClientId": "2lire4flitmtigmc3e8ed36sev",
+            "AppClientSecret": "b90ddhuoepkri2416gocbbv7gm6noctngcbr138i696206js44d",
+            "Region": "us-east-1"
+        }
+    },
+    "S3TransferUtility": {
+        "Default": {
+            "Bucket": "fishstand-data",
+            "Region": "us-east-1"
+        }
+    }
+}

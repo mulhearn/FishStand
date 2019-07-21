@@ -5,16 +5,12 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.PointF;
-import android.hardware.camera2.CaptureRequest;
+import android.content.ServiceConnection;
 import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.params.TonemapCurve;
-import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
@@ -24,7 +20,6 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import android.util.Pair;
 import android.widget.Toast;
 import android.os.IBinder;
 
@@ -33,10 +28,14 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ucdavis.crayfis.fishstand.analysis.Analysis;
 import edu.ucdavis.crayfis.fishstand.analysis.Cosmics;
+import edu.ucdavis.crayfis.fishstand.analysis.TriggeredImage;
 import edu.ucdavis.crayfis.fishstand.analysis.Photo;
 import edu.ucdavis.crayfis.fishstand.analysis.PixelStats;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
@@ -47,6 +46,11 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     private static final float RESTART_BATTERY_PCT = .9f;
     private static final long BATTERY_CHECK_TIME = 600000L;
 
+    private static final int DEFAULT_POOL_SIZE = 3;
+    private static final long DEFAULT_KEEP_ALIVE_TIME_MS = 10000L;
+
+    private ThreadPoolExecutor frameExecutor;
+
     private Macro macro;
 
     private Analysis analysis;
@@ -54,12 +58,27 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     private Handler broadcast_handler;
     private HandlerThread broadcast_thread;
 
+    private UploadService.UploadBinder uploadBinder;
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            uploadBinder = (UploadService.UploadBinder) iBinder;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            uploadBinder = null;
+        }
+    };
+
     private LocalBroadcastManager broadcast_manager;
     private final BroadcastReceiver state_change_receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final App.STATE new_state = (App.STATE) intent.getSerializableExtra(App.EXTRA_NEW_STATE);
             final String config_name = intent.getStringExtra(App.EXTRA_CONFIG_FILE);
+            final boolean upload = intent.getBooleanExtra(App.EXTRA_UPLOAD_FILES, false);
+
             broadcast_handler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -71,6 +90,12 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                                     macro = Macro.create("default.mac");
                                 else if(config_name.endsWith(".mac"))
                                     macro = Macro.create(config_name);
+
+                                // parse to the first config (if it exists)
+                                // this loads any environment vars at the start of the file
+                                if(macro != null && !macro.hasNext())
+                                    macro = null;
+
                             }
 
                             final Config cfg;
@@ -93,6 +118,33 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                                     return;
                                 }
                             }
+
+                            if(upload) {
+                                Intent uploadIntent = new Intent(DaqService.this, UploadService.class)
+                                        .putExtra(UploadService.EXTRA_POOL_SIZE,
+                                                cfg.getInteger("upload_threads", 3))
+                                        .putExtra(UploadService.EXTRA_KEEP_ALIVE_TIME_MS,
+                                                cfg.getLong("upload_keep_alive_time", 10000L));
+                                startService(uploadIntent);
+                                if(uploadBinder == null)
+                                    bindService(uploadIntent, serviceConnection, BIND_AUTO_CREATE);
+
+                                // wait for binding to finish
+                                int t = 0;
+                                final int dt = 100;
+                                final int timeout = 5000;
+
+                                while(uploadBinder == null) {
+                                    try {
+                                        Thread.sleep(dt);
+                                        t += dt;
+                                        if(t >= timeout) break;
+                                    } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            }
+
                             Run(cfg);
                             break;
                         case STOPPING:
@@ -122,7 +174,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
     @Override
     public void onCreate() {
-        Log.i(TAG, "onCreate");
 
         broadcast_thread = new HandlerThread("Broadcasts");
         broadcast_thread.start();
@@ -137,45 +188,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         Log.i(TAG, "onStartCommand");
         //App.log().append("DaqService received onStartCommand\n");
 
-        showNotification();
-
-        return START_STICKY;
-    }
-
-    @Override
-    public void onDestroy(){
-        Log.i(TAG, "onDestroy");
-        //App.log().append("DaqService received onDestroy\n");
-
-        stopForeground(true);
-        broadcast_manager.unregisterReceiver(state_change_receiver);
-        broadcast_thread.quitSafely();
-        try {
-            broadcast_thread.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Required notification for running service in Foreground:
-    public interface NOTIFICATIONS {
-        int FOREGROUND_ID = 101;
-        String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand";
-        String CHANNEL_NAME = "FishStand DAQ";
-    }
-
-    private void showNotification() {
-
-        /*
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                notificationIntent, 0);
-        */
-
-        Bitmap icon = BitmapFactory.decodeResource(getResources(),
-                R.mipmap.ic_launcher);
+        // show notifications
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel notificationChannel
@@ -190,15 +203,37 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 .setContentTitle("FishStand Cosmics")
                 .setTicker("FishStand Cosmics")
                 .setContentText("FishStand data acquisition is underway")
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
+                .setSmallIcon(R.drawable.ic_daq_icon)
                 //.setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .build();
 
-        startForeground(NOTIFICATIONS.FOREGROUND_ID,
-                notification);
+        startForeground(NOTIFICATIONS.FOREGROUND_ID, notification);
 
+        return START_STICKY;
+    }
+
+    @Override
+    public void onDestroy(){
+        Log.i(TAG, "onDestroy");
+        //App.log().append("DaqService received onDestroy\n");
+
+        stopForeground(true);
+
+        broadcast_manager.unregisterReceiver(state_change_receiver);
+        broadcast_thread.quitSafely();
+        try {
+            broadcast_thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Required notification for running service in Foreground:
+    public interface NOTIFICATIONS {
+        int FOREGROUND_ID = 101;
+        String CHANNEL_ID = "edu.ucdavis.crayfis.fishstand.DaqService";
+        String CHANNEL_NAME = "FishStand DAQ";
     }
 
     @Override
@@ -210,11 +245,16 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     public void Run(Config cfg) {
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().newRun(run_num);
+        App.log().newRun(run_num, cfg, uploadBinder);
         App.log().append("init called.\n");
         cfg.logConfig();
 
         App.getCamera().configure(cfg);
+
+        int poolSize = cfg.getInteger("frame_threads", DEFAULT_POOL_SIZE);
+        long keepAlive = cfg.getLong("frame_keep_alive_time", DEFAULT_KEEP_ALIVE_TIME_MS);
+        frameExecutor = new ThreadPoolExecutor(poolSize, poolSize, keepAlive, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>());
 
         events = new AtomicInteger();
         processing = new AtomicInteger();
@@ -230,22 +270,25 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 .append("delay:          " + delay + "\n");
 
         switch (analysis_name.toLowerCase()) {
-            case "pixelstats":
-                analysis = new PixelStats(cfg);
+            case PixelStats.NAME:
+                analysis = new PixelStats(cfg, uploadBinder);
                 break;
-            case "photo":
-                analysis = new Photo(cfg);
+            case Photo.NAME:
+                analysis = new Photo(cfg, uploadBinder);
                 break;
-            case "cosmics":
-                analysis = new Cosmics(cfg);
+            case Cosmics.NAME:
+                analysis = new Cosmics(cfg, uploadBinder);
+                break;
+            case TriggeredImage.NAME:
+                analysis = new TriggeredImage(cfg, uploadBinder);
                 break;
 
             default:
                 analysis = null;
         }
 
-        App.log().append("starting run " + run_num + "\n");
-        App.log().append("Finished initialization.\n");
+        App.log().append("starting run " + run_num + "\n")
+                .append("Finished initialization.\n");
 
         if ((!run_finished) && (delay > 0)) {
             App.log().append("Delaying start of first run by " + delay + " seconds.\n");
@@ -261,15 +304,13 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         EndRun();
     }
 
-    private void EndRun(){
+    private void EndRun() {
         // wait for all jobs to finish...
         if (processing.get() > 0){
             Runnable r = new Runnable(){public void run(){EndRun();};};
             broadcast_handler.postDelayed(r,1000);
             return;
         }
-
-        boolean restart = macro != null && macro.hasNext() && run_finished;
 
         if (analysis != null){
             analysis.ProcessRun();
@@ -282,12 +323,14 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().append("ending run " + run_num + " at " + date + "\n");
+        App.log().append("ending run " + run_num + " at " + date + "\n")
+                .finishRun();
         run_num++;
         App.getEdit()
                 .putInt("run_num", run_num)
                 .commit();
 
+        boolean restart = macro != null && macro.hasNext() && run_finished;
         if (restart) {
             if(checkBatteryPct(MIN_BATTERY_PCT)) {
                 App.updateState(App.STATE.RUNNING);
@@ -308,6 +351,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
             idleTimer.scheduleAtFixedRate(idleTimerTask, BATTERY_CHECK_TIME, BATTERY_CHECK_TIME);
             App.updateState(App.STATE.CHARGING);
         } else {
+            if(uploadBinder != null) {
+                unbindService(serviceConnection);
+                uploadBinder = null;
+            }
             App.updateState(App.STATE.READY);
         }
 
@@ -347,21 +394,20 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                     + " duration " + dur
                     + " sensitivity " + iso + "\n");
             long request = App.getCamera().getExposure();
-            if (exp != request){
+            if (Math.abs(exp - request) / request > .1){
                 App.log().append("reported exposure " + exp + " does not match request " + request + "\n");
             }
         }
 
-        if (num_frames > num) {
+        if (num_frames > num && num > 0) {
             frame.close();
             if (num_frames == num+1) {
                 run_finished = true;
                 App.updateState(App.STATE.STOPPING);
             }
-            return;
-        } else if(num_frames <= num) {
+        } else {
             try {
-                AsyncTask.THREAD_POOL_EXECUTOR.execute(new Runnable() {
+                frameExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
                         if (analysis != null){

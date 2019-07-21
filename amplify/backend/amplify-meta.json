@@ -1,0 +1,51 @@
+{
+	"providers": {
+		"awscloudformation": {
+			"AuthRoleName": "ishtand-20181128154939-authRole",
+			"UnauthRoleArn": "arn:aws:iam::248817459678:role/ishtand-20181128154939-unauthRole",
+			"AuthRoleArn": "arn:aws:iam::248817459678:role/ishtand-20181128154939-authRole",
+			"Region": "us-east-1",
+			"DeploymentBucketName": "ishtand-20181128154939-deployment",
+			"UnauthRoleName": "ishtand-20181128154939-unauthRole",
+			"StackName": "ishtand-20181128154939",
+			"StackId": "arn:aws:cloudformation:us-east-1:248817459678:stack/ishtand-20181128154939/455bc2b0-f368-11e8-9e0e-500c28604ce6"
+		}
+	},
+	"auth": {
+		"cognitoe923aabe": {
+			"service": "Cognito",
+			"providerPlugin": "awscloudformation",
+			"providerMetadata": {
+				"s3TemplateURL": "https://s3.amazonaws.com/ishtand-20181128154939-deployment/amplify-cfn-templates/auth/cognitoe923aabe-cloudformation-template.yml",
+				"logicalId": "authcognitoe923aabe"
+			},
+			"lastPushTimeStamp": "2018-12-01T18:27:29.563Z",
+			"output": {
+				"AppClientSecret": "b90ddhuoepkri2416gocbbv7gm6noctngcbr138i696206js44d",
+				"UserPoolId": "us-east-1_tMiVthhl9",
+				"AppClientIDWeb": "15hlnh4qsn17mi6o5n0sohprlp",
+				"AppClientID": "2lire4flitmtigmc3e8ed36sev",
+				"IdentityPoolId": "us-east-1:2cf346ca-cda0-4531-b70c-9ce19ea9d1cd",
+				"IdentityPoolName": "cognitoe923aabe_identitypool_e923aabe",
+				"UserPoolName": "cognitoe923aabe_userpool_e923aabe"
+			},
+			"lastPushDirHash": "R78NgrfDEdv3KsUeuDgXr8JeKEI="
+		}
+	},
+	"storage": {
+		"s3e005db7b": {
+			"service": "S3",
+			"providerPlugin": "awscloudformation",
+			"providerMetadata": {
+				"s3TemplateURL": "https://s3.amazonaws.com/ishtand-20181128154939-deployment/amplify-cfn-templates/storage/s3-cloudformation-template.json",
+				"logicalId": "storages3e005db7b"
+			},
+			"lastPushTimeStamp": "2018-12-01T18:27:29.563Z",
+			"output": {
+				"BucketName": "fishstand-data",
+				"Region": "us-east-1"
+			},
+			"lastPushDirHash": "aOyPh7gXarwuFYsCnXWmnvMm2lA="
+		}
+	}
+}

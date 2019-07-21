@@ -6,6 +6,7 @@ import android.renderscript.Allocation;
 import android.renderscript.Element;
 import android.renderscript.RenderScript;
 import android.renderscript.Type;
+import android.support.annotation.Nullable;
 import android.util.Log;
 
 import java.io.DataOutputStream;
@@ -17,16 +18,21 @@ import java.util.concurrent.locks.ReentrantLock;
 import edu.ucdavis.crayfis.fishstand.App;
 import edu.ucdavis.crayfis.fishstand.Calib;
 import edu.ucdavis.crayfis.fishstand.Config;
+import edu.ucdavis.crayfis.fishstand.UploadService;
 import edu.ucdavis.crayfis.fishstand.camera.Frame;
 import edu.ucdavis.crayfis.fishstand.ScriptC_cosmics;
 import edu.ucdavis.crayfis.fishstand.Storage;
 
 public class Cosmics implements Analysis {
     private static final String TAG = "Cosmics";
+    public static final String NAME = "cosmics";
 
     private AtomicInteger images = new AtomicInteger();
 
     private Random rand;
+
+    private UploadService.UploadBinder binder;
+    private int gzip;
 
     // parameters:
     private int region_dx;
@@ -48,27 +54,32 @@ public class Cosmics implements Analysis {
     private int wgt_hash;
 
     // Renderscript and Allocations
-    private ScriptC_cosmics script;
+    private final ScriptC_cosmics script;
     // - weights are only read by script:
-    private Allocation weights_alloc;
+    private final Allocation weights_alloc;
     // - output histograms
-    private Allocation hist_uncal_alloc;
-    private Allocation hist_unhot_alloc;
-    private Allocation hist_calib_alloc;
+    private final Allocation hist_uncal_alloc;
+    private final Allocation hist_unhot_alloc;
+    private final Allocation hist_calib_alloc;
     // - output results
-    private Allocation pixel_output_alloc;
+    private final Allocation pixel_output_alloc;
     private short pixel_output[];
 
     // Locks for script allocations and output file writing:
-    private static final ReentrantLock script_lock = new ReentrantLock();
-    private static final ReentrantLock output_lock = new ReentrantLock();
+    private final ReentrantLock script_lock = new ReentrantLock();
+    private final ReentrantLock output_lock = new ReentrantLock();
 
     // output files:
     private int out_part;
     private int out_image;
     private DataOutputStream output;
 
-    public Cosmics(Config cfg) {
+    private final String jobTag;
+
+    public Cosmics(Config cfg, @Nullable UploadService.UploadBinder binder) {
+
+        gzip = cfg.getInteger("gzip", 0);
+        this.binder = binder;
 
         rand = new Random();
 
@@ -124,6 +135,7 @@ public class Cosmics implements Analysis {
         out_part = 0;
         out_image = 0;
         output = null;
+        jobTag = cfg.getString("tag", "unspecified");
     }
 
     public void ProcessFrame(Frame frame) {
@@ -155,7 +167,7 @@ public class Cosmics implements Analysis {
         int num_region = num_trigger + num_zerobias;
 
         long timestamp = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_TIMESTAMP);
-        short region_buf[] = new short[region_size * num_region];
+        short[] region_buf = new short[region_size * num_region];
         for (int i=0; i<num_trigger; i++){
             short px = region_buf[i*region_size]    = pixel_output[3*i+1]; // px
             short py = region_buf[i*region_size+1]  = pixel_output[3*i+2]; // py
@@ -178,7 +190,7 @@ public class Cosmics implements Analysis {
         UpdateOutput(num_region, dropped, timestamp, region_buf);
     }
 
-    private void UpdateOutput(int num_region, int dropped, long timestamp, short region_buf[]) {
+    private void UpdateOutput(int num_region, int dropped, long timestamp, short[] region_buf) {
         output_lock.lock();
 
         // close file after enough regions...
@@ -187,7 +199,7 @@ public class Cosmics implements Analysis {
         if (output == null) {
             String filename = "run_" + run_num + "_cosmics_part_" + out_part + ".dat";
             App.log().append("starting new output file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename);
+            OutputStream out = Storage.newOutput(filename, jobTag, "cosmics", gzip, binder);
             output = new DataOutputStream(out);
             final int HEADER_SIZE = 11;
             final int VERSION = 1;
@@ -288,7 +300,7 @@ public class Cosmics implements Analysis {
 
             String filename = "run_" + run_num + "_cosmics_hist.dat";
             App.log().append("writing file " + filename + "\n");
-            OutputStream out = Storage.newOutput(filename);
+            OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
             DataOutputStream writer = new DataOutputStream(out);
             writer.writeInt(HEADER_SIZE);
             writer.writeInt(VERSION);
@@ -309,9 +321,7 @@ public class Cosmics implements Analysis {
             for (long bin: hist_calib_copy) {
                 writer.writeLong(bin);
             }
-            writer.flush();
             writer.close();
-            out.close();
         } catch(Exception e) {
             Log.e(TAG, e.getMessage());
             Log.e(TAG, "Failed to save results.");
