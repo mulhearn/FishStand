@@ -28,6 +28,7 @@ public class TriggeredImage implements Analysis {
 
     private final int SAMPLE_N;
     private final int SAMPLE_THRESH;
+    private final double ZERO_BIAS;
 
     private final ScriptC_hist script;
     private final Allocation aout;
@@ -50,6 +51,7 @@ public class TriggeredImage implements Analysis {
         int nPix = App.getCamera().getResX() * App.getCamera().getResY();
         SAMPLE_N = Math.max((int) (sampleFrac * nPix), 1);
         SAMPLE_THRESH = (int) (SAMPLE_N * thresh);
+        ZERO_BIAS = cfg.getDouble("zero_bias", 0);
 
         YUV = cfg.getBoolean("YUV", false);
 
@@ -90,12 +92,17 @@ public class TriggeredImage implements Analysis {
             }
         }
 
-        if(sum > SAMPLE_THRESH) {
+        if(sum > SAMPLE_THRESH || ZERO_BIAS >= 1 && Math.random() < 1 / ZERO_BIAS) {
             try {
                 TotalCaptureResult result = frame.getTotalCaptureResult();
                 long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) / 1000000L
                         + App.getCamera().getBaseTime();
                 String filename = timestamp + frame.getFileExt();
+
+                // name differently for zero bias
+                if(sum <= SAMPLE_THRESH) {
+                    filename = "zb" + filename;
+                }
 
                 OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
                 if(out != null) {

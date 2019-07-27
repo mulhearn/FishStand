@@ -53,7 +53,8 @@ public class Camera {
     private CameraCharacteristics cchars;
     private CameraDevice cdevice;
     private CameraCaptureSession csession;
-    
+    private final List<CaptureRequest> crequests = new ArrayList<>();
+
     private HandlerThread camera_thread;
     private Handler camera_handler;
     
@@ -303,53 +304,46 @@ public class Camera {
         }
     }
 
-    @Nullable
-    private List<CaptureRequest> makeRequests(List<Surface> surfaces) {
-        List<CaptureRequest> requests = new ArrayList<>();
-        for(Surface s : surfaces) {
-            try {
-                App.log().append("setting exposure to " + exposure + "\n");
+    private void makeRequests(List<Surface> surfaces) {
+        crequests.clear();
 
-                if (exposure < min_duration){
-                    App.log().append("setting frame duration to " + min_duration + "\n");
-                }
+        try {
+            CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
 
-                CaptureRequest.Builder b = cdevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                b.addTarget(s);
-                b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
-                b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
-                if (exposure < min_duration) {
-                    b.set(CaptureRequest.SENSOR_FRAME_DURATION, min_duration);
-                }
-                b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
-                b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
-                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
-                b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-                b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
-                b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
-
-                // extra params for non-RAW
-                b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-                //b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(1, 1, 1, 1));
-                b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, new ColorSpaceTransform
-                        (new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1})); // identity matrix
-                b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
-                b.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
-                b.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(tonemap, tonemap, tonemap));
-
-
-                App.log().append("camera initialization has succeeded.\n");
-
-                requests.add(b.build());
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-                return null;
+            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF);
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure);
+            if (exposure < min_duration) {
+                b.set(CaptureRequest.SENSOR_FRAME_DURATION, min_duration);
             }
+            b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
+            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f); // put focus at infinity
+            b.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_OFF);
+            b.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // need to see if any effect
+            b.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+            b.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
+            b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_OFF);
+            b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
+            b.set(CaptureRequest.STATISTICS_HOT_PIXEL_MAP_MODE, false);
+
+            // extra params for non-RAW
+            b.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+            //b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(1, 1, 1, 1));
+            b.set(CaptureRequest.COLOR_CORRECTION_TRANSFORM, new ColorSpaceTransform
+                    (new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1})); // identity matrix
+            b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+            b.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
+            b.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(tonemap, tonemap, tonemap));
+
+            for(Surface s: surfaces) {
+                b.addTarget(s);
+                crequests.add(b.build());
+            }
+
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
         }
-        return requests;
+
+        App.log().append("camera initialization has succeeded.\n");
     }
 
 
@@ -396,30 +390,16 @@ public class Camera {
         public void	onConfigured(@NonNull CameraCaptureSession session){
             App.log().append("Camera capture session configured.\n");
             csession = session;
-            final List<CaptureRequest> requests = makeRequests(frame_producer.getSurfaces());
-            if(requests == null) return;
+            makeRequests(frame_producer.getSurfaces());
+
+            if(crequests.isEmpty()) {
+                App.log().append("Unable to make camera request");
+            }
 
             try {
                 // do an initial capture to query the CaptureResult
-                csession.capture(requests.get(0), initialCallback, frame_handler);
-
-                // wait 3 seconds so the CPU can keep up with the buffers
-                camera_handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (csession == null){ // run was stopped after posting.
-                            return;
-                        }
-                        try {
-                            if(N_ALLOC > 1)
-                                csession.setRepeatingBurst(requests, frame_producer, frame_handler);
-                            else
-                                csession.setRepeatingRequest(requests.get(0), frame_producer, frame_handler);
-                        } catch (CameraAccessException | NullPointerException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }, 3000L);
+                csession.capture(crequests.get(0), initialCallback, frame_handler);
+                stream();
 
             } catch (CameraAccessException e) {
                 e.printStackTrace();
@@ -439,6 +419,26 @@ public class Camera {
             App.log().append("Camera capture session closed\n");
         }
     };
+
+    private void stream() {
+        // wait 3 seconds so the CPU can keep up with the buffers
+        camera_handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (csession == null){ // run was stopped after posting.
+                    return;
+                }
+                try {
+                    if(N_ALLOC > 1)
+                        csession.setRepeatingBurst(crequests, frame_producer, frame_handler);
+                    else
+                        csession.setRepeatingRequest(crequests.get(0), frame_producer, frame_handler);
+                } catch (CameraAccessException | NullPointerException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, 3000L);
+    }
 
 
     public void configure(Config cfg) {
@@ -535,6 +535,18 @@ public class Camera {
         if (frame_producer != null){
             frame_producer.close();
             frame_producer = null;
+        }
+    }
+
+    public void refresh() {
+        if(csession != null) {
+            try {
+                csession.stopRepeating();
+                csession.abortCaptures();
+                stream();
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
         }
     }
 

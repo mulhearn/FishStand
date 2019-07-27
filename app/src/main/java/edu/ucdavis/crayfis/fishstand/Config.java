@@ -199,7 +199,8 @@ public class Config {
                     .append("\n### triggered_image ###\n")
                     .append("analysis # triggered_image\n")
                     .append("sample_frac # 1.0 = mean (default), 0.0 = max\n")
-                    .append("thresh # 0.0\n");
+                    .append("thresh # 0.0\n")
+                    .append("zero_bias # 0 (or every n frames)");
 
             writer.flush();
             writer.close();
