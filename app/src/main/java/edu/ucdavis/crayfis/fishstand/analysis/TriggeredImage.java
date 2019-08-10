@@ -78,7 +78,7 @@ public class TriggeredImage implements Analysis {
         script.invoke_clear();
         SCRIPT_LOCK.release();
 
-        int sum = 0;
+        long sum = 0;
         int count = 0;
 
         // see if the frame passes the threshold
@@ -92,6 +92,7 @@ public class TriggeredImage implements Analysis {
             }
         }
 
+        App.log().append("sum = " + (1.0*sum/SAMPLE_N) + "\n");
         if(sum > SAMPLE_THRESH || ZERO_BIAS >= 1 && Math.random() < 1 / ZERO_BIAS) {
             try {
                 TotalCaptureResult result = frame.getTotalCaptureResult();

@@ -1,11 +1,9 @@
 package edu.ucdavis.crayfis.fishstand.camera;
 
 import java.text.DateFormat;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 import android.content.Context;
@@ -19,7 +17,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.params.ColorSpaceTransform;
-import android.hardware.camera2.params.RggbChannelVector;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.params.TonemapCurve;
@@ -29,7 +26,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.renderscript.Allocation;
 import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
@@ -82,6 +78,7 @@ public class Camera {
     private long exposure;
     private Size size;
     private float[] tonemap;
+    private boolean refresh;
 
     private boolean configured = false;
 
@@ -483,6 +480,8 @@ public class Camera {
             tonemap = new float[]{0f, 0f, (float)(saturation+1)/1024, 1f, 1f, 1f};
         }
 
+        refresh = cfg.getBoolean("refresh", true);
+
         configured = true;
     }
 
@@ -539,7 +538,7 @@ public class Camera {
     }
 
     public void refresh() {
-        if(csession != null) {
+        if(refresh && csession != null) {
             try {
                 csession.stopRepeating();
                 csession.abortCaptures();

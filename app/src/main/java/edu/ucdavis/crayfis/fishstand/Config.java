@@ -83,19 +83,6 @@ public class Config {
         return def;
     }
 
-    public int[] getIntegerArray(String param, int[] def) {
-        String str = getString(param, "");
-        if (!str.isEmpty()){
-            String[] tokens = str.split("\\s+");  // tokenize by whitespace
-            int dat[] = new int[tokens.length];
-            for (int i=0; i<dat.length; i++){
-                dat[i] = Integer.parseInt(tokens[i]);
-            }
-            return dat;
-        }
-        return def;
-    }
-
     public boolean getBoolean(String param, boolean def) {
         String str = getString(param, "");
         if (!str.isEmpty()){
@@ -117,6 +104,32 @@ public class Config {
         String str = getString(param, "");
         if(!str.isEmpty()) {
             return Double.parseDouble(str);
+        }
+        return def;
+    }
+
+    public int[] getIntegerArray(String param, int[] def) {
+        String str = getString(param, "");
+        if (!str.isEmpty()){
+            String[] tokens = str.split("\\s+");  // tokenize by whitespace
+            int dat[] = new int[tokens.length];
+            for (int i=0; i<dat.length; i++){
+                dat[i] = Integer.parseInt(tokens[i]);
+            }
+            return dat;
+        }
+        return def;
+    }
+
+    public double[] getDoubleArray(String param, double[] def) {
+        String str = getString(param, "");
+        if (!str.isEmpty()){
+            String[] tokens = str.split("\\s+");  // tokenize by whitespace
+            double dat[] = new double[tokens.length];
+            for (int i=0; i<dat.length; i++){
+                dat[i] = Double.parseDouble(tokens[i]);
+            }
+            return dat;
         }
         return def;
     }
@@ -161,6 +174,7 @@ public class Config {
                     .append("sensitivity_scale # 1.0 \n")
                     .append("exposure_scale # 1.0\n")
                     .append("delay # ms\n")
+                    .append("refresh # true\n")
 
                     .append("\n### additional formats ###\n")
                     .append("yuv # bool\n")
@@ -200,7 +214,12 @@ public class Config {
                     .append("analysis # triggered_image\n")
                     .append("sample_frac # 1.0 = mean (default), 0.0 = max\n")
                     .append("thresh # 0.0\n")
-                    .append("zero_bias # 0 (or every n frames)");
+                    .append("zero_bias # 0 (or every n frames)\n")
+
+                    .append("\n### trigger_calib ###\n")
+                    .append("analysis # trigger_calib\n")
+                    .append("sample_frac # 1.0 ...\n")
+                    .append("filesize # 5000000\n");
 
             writer.flush();
             writer.close();

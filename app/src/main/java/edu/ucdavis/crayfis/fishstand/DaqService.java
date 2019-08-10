@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ucdavis.crayfis.fishstand.analysis.Analysis;
 import edu.ucdavis.crayfis.fishstand.analysis.Cosmics;
+import edu.ucdavis.crayfis.fishstand.analysis.TriggerCalib;
 import edu.ucdavis.crayfis.fishstand.analysis.TriggeredImage;
 import edu.ucdavis.crayfis.fishstand.analysis.Photo;
 import edu.ucdavis.crayfis.fishstand.analysis.PixelStats;
@@ -281,6 +282,9 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 break;
             case TriggeredImage.NAME:
                 analysis = new TriggeredImage(cfg, uploadBinder);
+                break;
+            case TriggerCalib.NAME:
+                analysis = new TriggerCalib(cfg, uploadBinder);
                 break;
 
             default:
