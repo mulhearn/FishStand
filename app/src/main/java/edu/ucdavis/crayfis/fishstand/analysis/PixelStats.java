@@ -73,12 +73,11 @@ public class PixelStats implements Analysis {
         partition_size = partition_end - partition_start;
 
         if (num_partition > 1){
-            App.log().append("processing partition " + partition_index + " of " + num_partition + ".\n");
-
+            App.log().append("processing partition " + partition_index + " of " + num_partition);
         }
 
-        App.log().append("will process " + partition_size + " pixels of " + num_pixel + " total\n")
-                .append("allocating memory, please be patient...\n");
+        App.log().append("will process " + partition_size + " pixels of " + num_pixel + " total",
+                "allocating memory, please be patient...");
 
         RenderScript rs = App.getRenderScript();
 
@@ -95,7 +94,7 @@ public class PixelStats implements Analysis {
         script.invoke_set_image_width(nx);
         script.invoke_set_partition(partition_start, partition_end);
 
-        App.log().append("finished allocating memory.\n");
+        App.log().append("finished allocating memory.");
         
         jobTag = cfg.getString("tag", "unspecified");
     }
@@ -150,9 +149,9 @@ public class PixelStats implements Analysis {
         } catch (ArithmeticException e) {
             avg = -1;
         }
-        App.log().append("run exposure:     " + App.getCamera().getExposure() + "\n")
-                .append("run sensitivity:  " + App.getCamera().getISO() + "\n")
-                .append("mean pixel value:  " + avg + "\n");
+        App.log().append("run exposure:     " + App.getCamera().getExposure(),
+                "run sensitivity:  " + App.getCamera().getISO(),
+                "mean pixel value:  " + avg);
     }
 
 
@@ -179,7 +178,7 @@ public class PixelStats implements Analysis {
                 }
 
                 String filename = "run_" + run_num + "_part_" + ifile + "_pixelstats.dat";
-                App.log().append("writing file " + filename + "\n");
+                App.log().append("writing file " + filename);
                 OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
@@ -224,7 +223,7 @@ public class PixelStats implements Analysis {
             // add an extra downsampled file
             if (DOWNSAMPLE_STEP > 0) {
                 String filename = "run_" + run_num + "_sample" + "_pixelstats.dat";
-                App.log().append("writing file " + filename + "\n");
+                App.log().append("writing file " + filename);
                 OutputStream out = Storage.newOutput(filename, jobTag, "pixelstats", gzip, binder);
                 DataOutputStream writer = new DataOutputStream(out);
                 writer.writeInt(HEADER_SIZE);
@@ -264,6 +263,6 @@ public class PixelStats implements Analysis {
             Log.e(TAG, "Failed to save results.");
             return;
         }
-        App.log().append("all output files have been written.\n");
+        App.log().append("all output files have been written.");
     }
 }

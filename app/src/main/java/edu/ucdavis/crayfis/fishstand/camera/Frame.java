@@ -168,13 +168,10 @@ public abstract class Frame {
 
         final void stop() {
             stop_called = true;
-            App.log().append("matched frames:  " + matches + "\n")
-                    .append("dropped images:   " + dropped_images + "\n")
-                    .append("dropped results:  " + result_collector.dropped() + "\n");
         }
 
         @CallSuper
-        public void close(){
+        void close(){
             for (Surface s : surfaces) {
                 s.release();
             }

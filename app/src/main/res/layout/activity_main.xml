@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -13,17 +13,61 @@
 
     <EditText
         android:id="@+id/config_name"
-        android:layout_width="match_parent"
+        android:layout_toLeftOf="@id/upload_switch"
+        android:layout_alignParentLeft="true"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:ems="10"
         android:inputType="text"
         android:text="default.cfg" />
 
+    <Switch
+        android:id="@+id/upload_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentRight="true"
+        android:showText="false"
+        android:text="Upload" />
+
+    <TextView
+        android:id="@+id/status1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/config_name"
+        android:layout_alignParentLeft="true"
+        android:text="empty text" />
+
+    <TextView
+        android:id="@+id/status2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/status1"
+        android:layout_alignParentLeft="true"
+        android:text="empty text" />
+
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/status2"
+        android:layout_above="@id/button_bar"
+        android:layout_alignParentLeft="true"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/log_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </ScrollView>
+
     <LinearLayout
+        android:id="@+id/button_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="5dp"
+        android:layout_alignParentBottom="true"
         android:orientation="horizontal"
+        android:gravity="center_horizontal"
         android:weightSum="1">
 
         <Button
@@ -42,35 +86,4 @@
 
     </LinearLayout>
 
-    <Switch
-        android:id="@+id/upload_switch"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:showText="false"
-        android:text="Upload" />
-
-    <TextView
-        android:id="@+id/status1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="empty text" />
-
-    <TextView
-        android:id="@+id/status2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="empty text" />
-
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="true">
-
-        <TextView
-            android:id="@+id/log_text"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-    </ScrollView>
-
-</LinearLayout>
+</RelativeLayout>

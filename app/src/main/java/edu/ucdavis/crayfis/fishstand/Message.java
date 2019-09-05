@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 
 // a simple way to send update messages between GUI and asynchronous worker threads
 
@@ -23,14 +24,30 @@ public class Message {
 
     // message types
     // these can be made as fine as possible, for now using fairly coarse categories:
-    private static final String UPDATE_LOG       = "update-log";     // update a log file
-    private static final String UPDATE_STATE     = "update-state";   // update a state of DAQ Service
+    private static final String UPDATE_LOG       = "update-log";      // update a log file
+    private static final String UPDATE_STATE     = "update-state";    // update a state of DAQ Service
+    private static final String UPDATE_PROGRESS  = "update-progress"; // update status bar
 
-    void updateLog(){ send(UPDATE_LOG); }
-    BroadcastReceiver onLogUpdate(Runnable r){ return onMessage(r, UPDATE_LOG); }
+    void updateLog(){
+        send(UPDATE_LOG);
+    }
+    BroadcastReceiver onLogUpdate(Runnable r){
+        return onMessage(r, UPDATE_LOG);
+    }
 
-    void updateState(){ send(UPDATE_STATE); }
-    BroadcastReceiver onStateUpdate(Runnable r){ return onMessage(r, UPDATE_STATE); }
+    void updateState(){
+        send(UPDATE_STATE);
+    }
+    BroadcastReceiver onStateUpdate(Runnable r){
+        return onMessage(r, UPDATE_STATE);
+    }
+
+    void updateProgress() {
+        send(UPDATE_PROGRESS);
+    }
+    BroadcastReceiver onProgressUpdate(Runnable r){
+        return onMessage(r, UPDATE_PROGRESS);
+    }
 
     void unregister(BroadcastReceiver r) {
         LocalBroadcastManager.getInstance(context.getApplicationContext()).unregisterReceiver(r);
@@ -43,7 +60,8 @@ public class Message {
 
         BroadcastReceiver receiver = new BroadcastReceiver(){
             public void onReceive(Context context, Intent intent){
-                if (intent.getAction() == action) {
+                String intentAction = intent.getAction();
+                if (intentAction != null && intentAction.equals(action)) {
                     r.run();
                 }
             }

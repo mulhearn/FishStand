@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
 
     private BroadcastReceiver logUpdater;     // update log
     private BroadcastReceiver stateUpdater;   // update start/stop button based on DAQ state
+    private BroadcastReceiver progressUpdater; // update status bar
 
     private Intent daq;
 
@@ -90,7 +91,8 @@ public class MainActivity extends AppCompatActivity {
                 Button button = findViewById(R.id.start_stop_btn);
                 Switch uploadSwitch = findViewById(R.id.upload_switch);
                 uploadSwitch.setEnabled(App.getAppState() == App.STATE.READY);
-                TextView status = findViewById(R.id.status1);
+                TextView stateText = findViewById(R.id.status1);
+                TextView progressText = findViewById(R.id.status2);
 
                 SharedPreferences pref = getApplicationContext().getSharedPreferences("MyPref", 0);
                 int run_num = pref.getInt("run_num", 1);
@@ -98,28 +100,35 @@ public class MainActivity extends AppCompatActivity {
                     case READY:
                         button.setEnabled(true);
                         button.setText("Start DAQ");
-                        status.setText("run " + run_num + " ready");
+                        stateText.setText("run " + run_num + " ready");
+                        progressText.setText("");
                         break;
                     case RUNNING:
                         button.setEnabled(true);
                         button.setText("Stop DAQ");
-                        status.setText("run " + run_num + " running");
+                        stateText.setText("run " + run_num + " running");
                         break;
                     case STOPPING:
                         button.setEnabled(false);
-                        status.setText("run " + run_num + " stopping...");
+                        stateText.setText("run " + run_num + " stopping...");
                         break;
                     case CHARGING:
                         button.setEnabled(true);
-                        status.setText("waiting for battery to charge");
+                        stateText.setText("waiting for battery to charge");
+                        progressText.setText("");
                 }
             }
         });
 
         App.getMessage().updateState();
 
-        TextView status = findViewById(R.id.status2);
-        status.setText("unused status line...");
+        progressUpdater = App.getMessage().onProgressUpdate(new Runnable() {
+            @Override
+            public void run() {
+                TextView progressText = findViewById(R.id.status2);
+                progressText.setText(App.getCamera().getStatus());
+            }
+        });
 
         logUpdater = App.getMessage().onLogUpdate(new Runnable() {
             public void run() {
@@ -135,6 +144,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         App.getMessage().unregister(stateUpdater);
         App.getMessage().unregister(logUpdater);
+        App.getMessage().unregister(progressUpdater);
         if(App.getAppState() == App.STATE.READY) {
             stopService(daq);
         }

@@ -65,7 +65,7 @@ public class Calib {
     private void readCalibrations(){
         float max_wgt = 0.0f;
         float min_wgt = 1.0f;
-        App.log().append("reading hot pixel list...\n");
+        App.log().append("reading hot pixel list...");
         try {
             InputStream tmp = new FileInputStream(Storage.getFile("hot_pixels.cal"));
             DataInputStream input = new DataInputStream(tmp);
@@ -76,20 +76,20 @@ public class Calib {
                 hot[i] = input.readInt();
             }
         } catch (Exception e) {
-            App.log().append("Problem reading hot pixel list.\n");
+            App.log().append("Problem reading hot pixel list.");
             return;
         }
-        App.log().append("read " + num_hot + " hot pixels.\n");
-        App.log().append("hash code:  " + hot_hash + "\n");
+        App.log().append("read " + num_hot + " hot pixels.",
+                "hash code:  " + hot_hash);
         if (num_hot > 1) {
-            App.log().append("pixel " + hot[0] + "\n");
-            App.log().append("pixel " + hot[1] + "\n");
-            App.log().append("...\n");
-            App.log().append("pixel " + hot[num_hot - 2] + "\n");
-            App.log().append("pixel " + hot[num_hot - 1] + "\n");
+            App.log().append("pixel " + hot[0],
+                    "pixel " + hot[1],
+                    "...",
+                    "pixel " + hot[num_hot - 2],
+                    "pixel " + hot[num_hot - 1]);
         }
 
-        App.log().append("reading lens shading calibration...\n");
+        App.log().append("reading lens shading calibration...");
         try {
             InputStream tmp = new FileInputStream(Storage.getFile("pixel_weight.cal"));
             DataInputStream input = new DataInputStream(tmp);
@@ -113,25 +113,25 @@ public class Calib {
                 }
             }
         } catch (Exception e) {
-            App.log().append("Problem reading lens shading weights.\n");
+            App.log().append("Problem reading lens shading weights.");
             return;
         }
 
         if ((nx != width) || (ny != height)){
-            App.log().append("Calibration is inconsistend with image size.\n");
+            App.log().append("Calibration is inconsistend with image size.");
             return;
         }
 
-        App.log().append("read " + num_wgt + " lens shading weights.\n");
-        App.log().append("hash code:    " + wgt_hash + "\n");
-        App.log().append("nx:           " + nx + "\n");
-        App.log().append("ny:           " + ny + "\n");
-        App.log().append("down_sample:  " + ds + "\n");
-        App.log().append("lx:           " + lx + "\n");
-        App.log().append("ly:           " + ly + "\n");
-        App.log().append("min wgt:      " + min_wgt + "\n");
-        App.log().append("max wgt:      " + max_wgt + "\n");
-        App.log().append("Calculating full resolutions weights.\n");
+        App.log().append("read " + num_wgt + " lens shading weights.",
+                "hash code:    " + wgt_hash,
+                "nx:           " + nx,
+                "ny:           " + ny,
+                "down_sample:  " + ds,
+                "lx:           " + lx,
+                "ly:           " + ly,
+                "min wgt:      " + min_wgt,
+                "max wgt:      " + max_wgt,
+                "Calculating full resolutions weights.");
 
         int tot_pixels = nx*ny;
         combined_weights = new short[tot_pixels];
@@ -146,7 +146,7 @@ public class Calib {
             combined_weights[hot[i]] = 0;
         }
 
-        App.log().append("All calibrations available.\n");
+        App.log().append("All calibrations available.");
         calibrated = true;
     }
 }

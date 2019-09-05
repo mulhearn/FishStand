@@ -101,9 +101,13 @@ public class Cosmics implements Analysis {
         threshold = cfg.getIntegerArray("threshold", threshold_default);
         prescale = cfg.getIntegerArray("prescale", prescale_default);
         num_thresh = threshold.length;
+
+        String[] logMessages = new String[num_thresh];
         for (int i=0; i<num_thresh; i++){
-            App.log().append("threshold " + i + " value: " + threshold[i] + " prescale:  " + prescale[i] + "\n");
+            logMessages[i] = "threshold " + i + " value: " + threshold[i] + " prescale:  " + prescale[i];
         }
+        App.log().append(logMessages);
+
         region_dx = cfg.getInteger("region_dx", 2);
         region_dy = cfg.getInteger("region_dy", 2);
         region_size = 3+(2*region_dx+1)*(2*region_dy+1); // x and y coordinates of region, plus the region data
@@ -198,7 +202,7 @@ public class Cosmics implements Analysis {
 
         if (output == null) {
             String filename = "run_" + run_num + "_cosmics_part_" + out_part + ".dat";
-            App.log().append("starting new output file " + filename + "\n");
+            App.log().append("starting new output file " + filename);
             OutputStream out = Storage.newOutput(filename, jobTag, "cosmics", gzip, binder);
             output = new DataOutputStream(out);
             final int HEADER_SIZE = 11;
@@ -277,7 +281,7 @@ public class Cosmics implements Analysis {
 
     public void ProcessRun() {
 
-        App.log().append("Cosmics run ending...\n");
+        App.log().append("Cosmics run ending...");
 
         CloseOutput();
 
@@ -299,7 +303,7 @@ public class Cosmics implements Analysis {
             final int VERSION = 1;
 
             String filename = "run_" + run_num + "_cosmics_hist.dat";
-            App.log().append("writing file " + filename + "\n");
+            App.log().append("writing file " + filename);
             OutputStream out = Storage.newOutput(filename, jobTag, NAME, gzip, binder);
             DataOutputStream writer = new DataOutputStream(out);
             writer.writeInt(HEADER_SIZE);
@@ -327,6 +331,6 @@ public class Cosmics implements Analysis {
             Log.e(TAG, "Failed to save results.");
             return;
         }
-        App.log().append("all output files have been written.\n");
+        App.log().append("all output files have been written.");
     }
 }

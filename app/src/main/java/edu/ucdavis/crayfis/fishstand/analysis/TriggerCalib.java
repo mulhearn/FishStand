@@ -113,7 +113,7 @@ public class TriggerCalib implements Analysis {
 
                 String filename = "run_" + App.getPref().getInt("run_num", 0) + "_part_" + iFile++ + "_trigger_calib.dat";
                 os = new DataOutputStream(Storage.newOutput(filename, jobTag, NAME, gzip, binder));
-                App.log().append("Writing to " + filename + "\n");
+                App.log().append("Writing to " + filename);
                 writeHeader(os);
             }
 
@@ -122,7 +122,7 @@ public class TriggerCalib implements Analysis {
             }
 
         } catch (IOException e) {
-            App.log().append("Error writing to file\n");
+            App.log().append("Error writing to file");
         }
 
         OUTPUT_LOCK.unlock();
@@ -153,7 +153,7 @@ public class TriggerCalib implements Analysis {
         try {
             if(os != null) os.close();
         } catch (IOException e) {
-            App.log().append("Error writing to file\n");
+            App.log().append("Error writing to file");
         }
     }
 }

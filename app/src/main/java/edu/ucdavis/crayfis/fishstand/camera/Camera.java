@@ -87,47 +87,55 @@ public class Camera {
 
     public Camera() {
         App.log().append("init started at "
-                + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
+                + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())));
         cmanager = (CameraManager) App.getContext().getSystemService(Context.CAMERA_SERVICE);
         try {
             cid = "";
-            String summary = "";
+            ArrayList<String> summary = new ArrayList<>();
             for (String id : cmanager.getCameraIdList()) {
-                summary += "camera id string:  " + id + "\n";
+                summary.add("camera id string:  " + id);
                 CameraCharacteristics chars = cmanager.getCameraCharacteristics(id);
                 // Does the camera have a forwards facing lens?
                 Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
 
-                summary += "facing:  " + facing + "\n";
+                summary.add("facing:  " + facing);
                 SizeF fsize = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
                 Size isize = chars.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
-                summary += "physical sensor size (w x h):  " + fsize.getWidth() + " mm x " + fsize.getHeight() + " mm\n";
-                summary += "pixel array size (w x h):  " + isize.getWidth() + " x " + isize.getHeight() + "\n";
+                summary.add("physical sensor size (w x h):  " + fsize.getWidth() + " mm x " + fsize.getHeight() + " mm");
+                summary.add("pixel array size (w x h):  " + isize.getWidth() + " x " + isize.getHeight());
 
                 //check for needed capabilities:
                 Boolean manual_mode = false;
                 Boolean raw_mode = false;
                 int[] caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
-                summary += "caps:  ";
-                for (int i : caps) {
-                    summary += i + ", ";
-                    if (i == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR){ manual_mode = true; }
-                    if (i == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW){ raw_mode = true; }
+                String capsSummary = "caps:  ";
+                if(caps != null) {
+                    for (int i : caps) {
+                        capsSummary += i + ", ";
+                        if (i == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) {
+                            manual_mode = true;
+                        }
+                        if (i == CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW) {
+                            raw_mode = true;
+                        }
+                    }
+                } else {
+                    capsSummary += "None";
                 }
-                summary += "\n";
-                summary += "RAW mode support:  " + raw_mode + "\n";
-                summary += "Manual mode support:  " + manual_mode + "\n";
+                summary.add(capsSummary);
+
+                summary.add("RAW mode support:  " + raw_mode);
+                summary.add("Manual mode support:  " + manual_mode);
                 if ((cid.isEmpty()) && (facing == 1) && raw_mode && manual_mode) {
                     cid = id;
                     break;
                 }
             }
-            App.log().append(summary);
+
             if (!cid.isEmpty()) {
-                summary = "";
-                summary += "selected camera ID " + cid + "\n";
+                summary.add("selected camera ID " + cid);
                 cchars = cmanager.getCameraCharacteristics(cid);
-                Size isize = cchars.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
+                //Size isize = cchars.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
                 StreamConfigurationMap configs = cchars.get(
                         CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
                 Boolean raw_available = false;
@@ -135,8 +143,8 @@ public class Camera {
                 for (int fmt : fmts) {
                     if (fmt == ImageFormat.RAW_SENSOR) raw_available = true;
                 }
-                if (!raw_available) {
-                    summary += "RAW_SENSOR format not available.  Cannot init...";
+                if (!raw_available && !yuv) {
+                    summary.add("RAW_SENSOR format not available.  Cannot init...");
                     return;
                 }
 
@@ -144,50 +152,48 @@ public class Camera {
                 Size[] sizes;
 
                 sizes = configs.getOutputSizes(ImageFormat.RAW_SENSOR);
-                summary += "RAW format available sizes:  ";
+                String rawSizeSummary = "RAW format available sizes:  ";
                 maxprod = 0;
                 for (Size s : sizes) {
                     int h = s.getHeight();
                     int w = s.getWidth();
                     int p = h * w;
-                    summary += w + " x " + h + ",";
+                    rawSizeSummary += w + " x " + h + ",";
                     if (p > maxprod) {
                         maxprod = p;
                         raw_size = s;
                     }
                 }
-                summary += "\n";
-                summary += "Largest size is " + raw_size + "\n";
+                summary.add(rawSizeSummary);
+                summary.add("Largest size is " + raw_size);
 
                 min_duration_raw = configs.getOutputMinFrameDuration(ImageFormat.RAW_SENSOR, raw_size);
-                summary += "with minimum frame duration " + min_duration_raw + "\n";
+                summary.add("with minimum frame duration " + min_duration_raw);
 
-                sizes = configs.getOutputSizes(Allocation.class );
-                summary += "YUV format available sizes:  ";
+                sizes = configs.getOutputSizes(Allocation.class);
+                String yuvSizeSummary = "YUV format available sizes:  ";
                 maxprod = 0;
                 for (Size s : sizes) {
                     int h = s.getHeight();
                     int w = s.getWidth();
                     int p = h * w;
-                    summary += w + " x " + h + ",";
+                    yuvSizeSummary += w + " x " + h + ",";
                     if (p > maxprod) {
                         maxprod = p;
                         yuv_size = s;
                     }
                 }
-                summary += "\n";
-                summary += "Largest size is " + yuv_size + "\n";
+                summary.add(yuvSizeSummary);
+                summary.add("Largest size is " + yuv_size);
                 min_duration_yuv = configs.getOutputMinFrameDuration(ImageFormat.YUV_420_888, yuv_size);
-                summary += "with minimum frame duration " + min_duration_yuv + "\n";
+                summary.add("with minimum frame duration " + min_duration_yuv);
 
-
-                summary += "focal lengths:  ";
+                String flSummary = "focal lengths:  ";
                 for(float fl: cchars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)){
-                    summary += fl + ", ";
+                    flSummary += fl + ", ";
                 }
-                summary += "\n";
+                summary.add(flSummary);
 
-                summary += "color correction mode:  ";
                 String color_mode = "ON";
                 for(int n: cchars.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES)){
                     if(n == CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_OFF) {
@@ -195,9 +201,8 @@ public class Camera {
                         break;
                     }
                 }
-                summary += color_mode + "\n";
+                summary.add("color correction mode: " + color_mode);
 
-                summary += "noise reduction mode:  ";
                 String noise_mode = "ON";
                 for(int n: cchars.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES)){
                     if(n == CameraMetadata.NOISE_REDUCTION_MODE_OFF) {
@@ -205,9 +210,8 @@ public class Camera {
                         break;
                     }
                 }
-                summary += noise_mode + "\n";
+                summary.add("noise reduction mode: " + noise_mode);
 
-                summary += "hotpixel mode:  ";
                 String hotpixel_mode = "ON";
                 for(int n: cchars.get(CameraCharacteristics.HOT_PIXEL_AVAILABLE_HOT_PIXEL_MODES)){
                     if(n == CameraMetadata.HOT_PIXEL_MODE_OFF) {
@@ -215,9 +219,8 @@ public class Camera {
                         break;
                     }
                 }
-                summary += hotpixel_mode + "\n";
+                summary.add("hotpixel mode: " + hotpixel_mode);
 
-                summary += "edge mode:  ";
                 String edge_mode = "ON";
                 for(int n: cchars.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES)){
                     if(n == CameraMetadata.HOT_PIXEL_MODE_OFF) {
@@ -225,9 +228,8 @@ public class Camera {
                         break;
                     }
                 }
-                summary += edge_mode + "\n";
+                summary.add("edge mode: " + edge_mode);
 
-                summary += "tonemap control: ";
                 String tonemap_control = "DISABLED";
                 for(int n: cchars.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES)){
                     if(n == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) {
@@ -235,22 +237,22 @@ public class Camera {
                         break;
                     }
                 }
-                summary += tonemap_control + "\n";
+                summary.add("tonemap control: " + tonemap_control);
 
 
                 Range<Long> rexp = cchars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
                 min_exp = rexp.getLower();
                 max_exp = rexp.getUpper();
-                summary += "Exposure range:  " + min_exp*1E-6 + " to " + max_exp*1E-6 + " ms\n";
+                summary.add("Exposure range:  " + min_exp*1E-6 + " to " + max_exp*1E-6 + " ms");
                 // set default selected exposure to maximum:
 
                 Range<Integer> rsens = cchars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
                 min_sens = rsens.getLower();
                 max_sens = rsens.getUpper();
-                summary += "Sensitivity range:  " + min_sens + " to " + max_sens + " (ISO)\n";
+                summary.add("Sensitivity range:  " + min_sens + " to " + max_sens + " (ISO)");
 
                 max_analog = cchars.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
-                summary += "Max Analog Sensitivity:  " + max_analog + "\n";
+                summary.add("Max Analog Sensitivity:  " + max_analog);
 
                 final String filter_str;
                 switch (cchars.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT)) {
@@ -269,27 +271,26 @@ public class Camera {
                     default:
                         filter_str = "Unknown";
                 }
-                summary += "Color filter arrangement:  " + filter_str + "\n";
+                summary.add("Color filter arrangement:  " + filter_str);
+                summary.add("Camera settings initialized");
 
-                App.log().append(summary);
-
-                App.log().append("Camera settings initialized.\n");
             } else {
-                App.log().append("Could not find camera device with sufficient capabilities.  Cannot init.");
+                summary.add("Could not find camera device with sufficient capabilities.  Cannot init.");
             }
+
+            App.log().append(summary);
         } catch (CameraAccessException | SecurityException e) {
             e.printStackTrace();
         }
     }
 
     private void createSession() {
-        App.log().append("Creating capture session\n");
 
         if (yuv) {
-            App.log().append("Using YUV image format.\n");
+            App.log().append("Creating capture session: using YUV image format.");
             frame_producer = new YuvFrame.Producer(N_ALLOC, size, frame_handler, frame_callback);
         } else {
-            App.log().append("Using RAW image format.\n");
+            App.log().append("Creating capture session: using RAW image format.");
             frame_producer = new RawFrame.Producer(N_ALLOC, raw_size, frame_handler, frame_callback);
         }
 
@@ -340,7 +341,7 @@ public class Camera {
             e.printStackTrace();
         }
 
-        App.log().append("camera initialization has succeeded.\n");
+        App.log().append("camera initialization has succeeded.");
     }
 
 
@@ -349,12 +350,12 @@ public class Camera {
         public void onOpened(@NonNull CameraDevice camera) {
             //This is called when the camera is open
             cdevice = camera;
-            App.log().append("Camera is open.\n");
+            App.log().append("Camera is open.");
             createSession();
         }
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
-            App.log().append("Camera is closed.\n");
+            App.log().append("Camera is closed.");
             camera_thread.quitSafely();
             frame_thread.quitSafely();
             try {
@@ -365,10 +366,11 @@ public class Camera {
             }
             cdevice.close();
             cdevice = null;
+            App.updateState(App.STATE.STOPPING);
         }
         @Override
         public void onError(@NonNull CameraDevice camera, int error) {
-            App.log().append("Camera in error! " + error + "\n");
+            App.log().append("Camera in error! " + error);
             camera_thread.quitSafely();
             frame_thread.quitSafely();
             try {
@@ -379,13 +381,14 @@ public class Camera {
             }
             cdevice.close();
             cdevice = null;
+            App.updateState(App.STATE.STOPPING);
         }
     };
 
     private final CameraCaptureSession.StateCallback sessionCallback = new CameraCaptureSession.StateCallback(){
         @Override
         public void	onConfigured(@NonNull CameraCaptureSession session){
-            App.log().append("Camera capture session configured.\n");
+            App.log().append("Camera capture session configured");
             csession = session;
             makeRequests(frame_producer.getSurfaces());
 
@@ -413,7 +416,7 @@ public class Camera {
 
         @Override
         public void onClosed(@NonNull CameraCaptureSession session) {
-            App.log().append("Camera capture session closed\n");
+            App.log().append("Camera capture session closed");
         }
     };
 
@@ -425,6 +428,8 @@ public class Camera {
                 if (csession == null){ // run was stopped after posting.
                     return;
                 }
+                // endpoint for start of stream
+                App.log().append(getStatus());
                 try {
                     if(N_ALLOC > 1)
                         csession.setRepeatingBurst(crequests, frame_producer, frame_handler);
@@ -470,7 +475,7 @@ public class Camera {
         } else {
             size = yuv ? yuv_size : raw_size;
         }
-        App.log().append("Size = " + size + "\n");
+        App.log().append("Size = " + size);
 
         int saturation = cfg.getInteger("saturation", 1023);
         if(saturation == 1023) {
@@ -487,7 +492,7 @@ public class Camera {
 
     public void start(Frame.OnFrameCallback callback) {
         if(!configured) {
-            App.log().append("Camera not configured!\n");
+            App.log().append("Camera not configured!");
             return;
         }
 
@@ -535,11 +540,13 @@ public class Camera {
             frame_producer.close();
             frame_producer = null;
         }
+        App.log().append(getStatus());
     }
 
     public void refresh() {
         if(refresh && csession != null) {
             try {
+                // clear session and restart
                 csession.stopRepeating();
                 csession.abortCaptures();
                 stream();
@@ -547,6 +554,9 @@ public class Camera {
                 e.printStackTrace();
             }
         }
+
+        // don't count this frame towards total
+        frame_producer.matches--;
     }
 
     public int getResX() {
@@ -573,6 +583,12 @@ public class Camera {
         return baseTimeMillis;
     }
 
+    public String getStatus() {
+        return "matched: " + frame_producer.matches + ", "
+                + "dropped: " + frame_producer.dropped_images + " images / "
+                + frame_producer.result_collector.dropped() + " results";
+    }
+
     private final CameraCaptureSession.CaptureCallback initialCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureStarted(@NonNull CameraCaptureSession session,
@@ -589,11 +605,11 @@ public class Camera {
                                        @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("capture complete with exposure " + result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+            ArrayList<String> captureSummary = new ArrayList<>();
+            captureSummary.add("capture complete with exposure " + result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
                     + " duration " + result.get(CaptureResult.SENSOR_FRAME_DURATION)
-                    + " sensitivity " + result.get(CaptureResult.SENSOR_SENSITIVITY) + "\n")
-                    .append("effective exposure factor:  " + result.get(CaptureResult.REPROCESS_EFFECTIVE_EXPOSURE_FACTOR) + "\n");
+                    + " sensitivity " + result.get(CaptureResult.SENSOR_SENSITIVITY));
+            captureSummary.add("effective exposure factor:  " + result.get(CaptureResult.REPROCESS_EFFECTIVE_EXPOSURE_FACTOR));
 
             TonemapCurve curve = result.get(CaptureResult.TONEMAP_CURVE);
             if(curve != null) {
@@ -606,27 +622,27 @@ public class Camera {
                     }
                 }
 
-                sb.append("saturation point: " + (int) (saturation_x * 1023) + "\n");
+                captureSummary.add("saturation point: " + (int) (saturation_x * 1023) + "\n");
             }
-            sb.append("color gains:  " + result.get(CaptureResult.COLOR_CORRECTION_GAINS) + "\n")
-                    .append("sRGB transform:" + result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM) + "\n");
+            captureSummary.add("color gains:  " + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
+            captureSummary.add("sRGB transform:" + result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM));
 
             Pair<Double, Double>[] noise_coeffs = result.get(CaptureResult.SENSOR_NOISE_PROFILE);
             if(noise_coeffs != null) {
-                sb.append("noise_coeffs:\n");
+                captureSummary.add("noise_coeffs:");
                 for (Pair<Double, Double> coeffs : noise_coeffs){
-                    sb.append("first:  " + coeffs.first + " second:  " + coeffs.second + "\n");
+                    captureSummary.add("first:  " + coeffs.first + " second:  " + coeffs.second);
                 }
             }
 
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 float[] black_levels = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
                 if(black_levels != null)
-                    sb.append("black level:  " + black_levels[0] + ", " + black_levels[1] + ", " + black_levels[2] + "\n");
-                sb.append("white level:  " + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL) + "\n");
+                    captureSummary.add("black level:  " + black_levels[0] + ", " + black_levels[1] + ", " + black_levels[2]);
+                captureSummary.add("white level:  " + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL));
             }
 
-            App.log().append(sb.toString());
+            App.log().append(captureSummary);
         }
     };
 

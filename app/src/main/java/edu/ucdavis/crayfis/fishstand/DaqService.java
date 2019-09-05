@@ -247,7 +247,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         int run_num = App.getPref().getInt("run_num", 0);
         App.log().newRun(run_num, cfg, uploadBinder);
-        App.log().append("init called.\n");
+        App.log().append("init called.");
         cfg.logConfig();
 
         App.getCamera().configure(cfg);
@@ -265,10 +265,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
         delay   = cfg.getInteger("delay", 0);
         String analysis_name = cfg.getString("analysis", "");
 
-        App.log().append("analysis:       " + analysis_name + "\n")
-                .append("num of images:  " + num + "\n")
-                .append("job tag:        " + job_tag + "\n")
-                .append("delay:          " + delay + "\n");
+        App.log().append("analysis:       " + analysis_name,
+                        "num of images:  " + num,
+                        "job tag:        " + job_tag,
+                        "delay:          " + delay);
 
         switch (analysis_name.toLowerCase()) {
             case PixelStats.NAME:
@@ -291,11 +291,11 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 analysis = null;
         }
 
-        App.log().append("starting run " + run_num + "\n")
-                .append("Finished initialization.\n");
+        App.log().append("starting run " + run_num,
+                        "Finished initialization.");
 
         if ((!run_finished) && (delay > 0)) {
-            App.log().append("Delaying start of first run by " + delay + " seconds.\n");
+            App.log().append("Delaying start of first run by " + delay + " seconds.");
             SystemClock.sleep(delay * 1000);
         }
         run_finished = false;
@@ -303,7 +303,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     }
 
     private void Stop() {
-        App.log().append("run stopping\n");
+        App.log().append("run stopping");
         App.getCamera().stop();
         EndRun();
     }
@@ -322,13 +322,12 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
         App.getCamera().close();
 
-        App.log().append("events:   " + events.intValue() + "\n");
-
         String date = new SimpleDateFormat("hh:mm aaa yyyy-MMM-dd ", Locale.getDefault()).format(new Date());
 
         int run_num = App.getPref().getInt("run_num", 0);
-        App.log().append("ending run " + run_num + " at " + date + "\n")
-                .finishRun();
+        App.log().append("ending run " + run_num + " at " + date,
+                        "events:   " + events.intValue())
+                        .finishRun();
         run_num++;
         App.getEdit()
                 .putInt("run_num", run_num)
@@ -381,7 +380,7 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
     @Override
     public void onFrame(@NonNull final Frame frame, final int num_frames) {
 
-        final int verbosity = getEventVerbosity(num_frames);
+        App.getMessage().updateProgress();
 
         Long exp = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Long dur = frame.getTotalCaptureResult().get(CaptureResult.SENSOR_FRAME_DURATION);
@@ -396,10 +395,10 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
 
             App.log().append("capture complete with exposure " + exp
                     + " duration " + dur
-                    + " sensitivity " + iso + "\n");
+                    + " sensitivity " + iso);
             long request = App.getCamera().getExposure();
             if (Math.abs(exp - request) / (1.0 * request) > .1){
-                App.log().append("reported exposure " + exp + " does not match request " + request + "\n");
+                App.log().append("reported exposure " + exp + " does not match request " + request);
                 App.getCamera().refresh();
                 return;
             }
@@ -426,13 +425,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                             frame.close();
                         } catch (IllegalStateException e) {
                             Log.e(TAG,"Image close failure.");
-                            return;
-                        }
-                        int num_events = events.incrementAndGet();
-
-                        if (verbosity >= 0){
-                            String msg = "finished processing " + num_events + " events.\n";
-                            App.log().append(msg);
                         }
                     }
                 });
@@ -445,13 +437,6 @@ public class DaqService extends Service implements Frame.OnFrameCallback {
                 }
             }
         }
-    }
-
-    public static int getEventVerbosity(int event) {
-        if(event == 1) return 2;
-        if(event < 10) return 1;
-        if((event < 100 && event % 10 == 0) || event % 100 == 0) return 0;
-        return -1;
     }
 
 }

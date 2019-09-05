@@ -21,6 +21,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
@@ -64,9 +65,13 @@ public class Config {
     }
 
     public void logConfig() {
+        ArrayList<String> paramMessages = new ArrayList<>();
+
         for(Map.Entry<String, String> entry: config_map.entrySet()) {
-            App.log().append("parameter " + entry.getKey() + ":  " + entry.getValue() + "\n");
+            paramMessages.add("parameter " + entry.getKey() + ":  " + entry.getValue());
         }
+
+        App.log().append(paramMessages);
     }
 
     public String getString(String param, String def){
@@ -165,7 +170,9 @@ public class Config {
                     .append("# Fishstand Run Configuration File\n")
                     .append("# Created on Run " + date + "\n\n")
 
-                    .append("tag # default_tag\n")
+                    .append("tag # default_tag\n\n")
+
+                    .append("log_update_time # 0 ms\n")
 
                     .append("\n### camera ###\n")
                     .append("num # 1\n")
