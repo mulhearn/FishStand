@@ -3,7 +3,7 @@ package edu.ucdavis.crayfis.fishstand.camera;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.TotalCaptureResult;
 import android.renderscript.Allocation;
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 import android.view.Surface;
 
 import java.util.List;
